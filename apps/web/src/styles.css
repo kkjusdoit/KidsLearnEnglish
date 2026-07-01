@@ -9,6 +9,8 @@
   --muted: oklch(0.43 0.035 248);
   --primary: oklch(0.64 0.18 225);
   --primary-strong: oklch(0.52 0.2 228);
+  --school-red: oklch(0.58 0.22 28);
+  --school-coral: oklch(0.72 0.16 35);
   --flower: oklch(0.66 0.22 28);
   --success: oklch(0.63 0.16 155);
   --border: oklch(0.88 0.03 230);
@@ -72,6 +74,46 @@ button:disabled {
   gap: 12px;
   min-height: 64px;
   margin-bottom: 18px;
+}
+
+.brand-strip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 92px;
+  margin-bottom: 14px;
+  padding: 12px 14px;
+  overflow: hidden;
+  color: white;
+  background:
+    radial-gradient(circle at 88% 18%, oklch(0.88 0.11 58 / 0.95) 0 8px, transparent 9px),
+    linear-gradient(135deg, var(--school-red), var(--school-coral));
+  border-radius: 16px;
+}
+
+.brand-strip img {
+  width: min(50%, 216px);
+  height: auto;
+  object-fit: contain;
+}
+
+.class-mark {
+  display: grid;
+  justify-items: end;
+  gap: 3px;
+  text-align: right;
+  text-shadow: 0 1px 2px oklch(0.25 0.08 28 / 0.28);
+}
+
+.class-mark span {
+  font-size: 1.34rem;
+  font-weight: 950;
+}
+
+.class-mark strong {
+  font-size: 0.86rem;
+  font-weight: 900;
 }
 
 .topbar strong {
@@ -293,7 +335,7 @@ button:disabled {
 
 .page-nav {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1fr 1fr 1fr;
   gap: 12px;
 }
 
@@ -324,16 +366,76 @@ button:disabled {
 }
 
 .reward {
+  position: relative;
   display: grid;
   justify-items: center;
-  gap: 8px;
-  color: var(--flower);
+  gap: 10px;
+  min-height: 300px;
+  padding: 24px 16px 22px;
+  overflow: hidden;
+  color: var(--school-red);
+  background:
+    radial-gradient(circle at 16% 18%, oklch(0.9 0.12 92) 0 16px, transparent 17px),
+    radial-gradient(circle at 88% 76%, oklch(0.86 0.14 25) 0 20px, transparent 21px),
+    linear-gradient(180deg, oklch(0.99 0.025 45), oklch(0.95 0.055 42));
+  border: 2px solid oklch(0.94 0.06 48);
+  border-radius: 16px;
+}
+
+.reward::before,
+.reward::after {
+  position: absolute;
+  color: oklch(0.82 0.18 85);
+  font-size: 3rem;
+  font-weight: 950;
+  content: "★";
+}
+
+.reward::before {
+  top: 16px;
+  left: 18px;
+}
+
+.reward::after {
+  right: 22px;
+  bottom: 18px;
+  color: oklch(0.72 0.16 35);
+}
+
+.reward img {
+  width: 92px;
+  height: auto;
+  margin-bottom: -4px;
+}
+
+.reward-badge {
+  min-height: 42px;
+  padding: 8px 18px;
+  color: oklch(0.23 0.05 80);
+  background: oklch(0.91 0.12 95);
+  border-radius: 999px;
+  font-size: 1.1rem;
+  font-weight: 950;
 }
 
 .reward h2 {
   margin: 0;
-  color: var(--ink);
-  font-size: 1.35rem;
+  color: oklch(0.32 0.12 28);
+  font-size: 1.65rem;
+  line-height: 1.2;
+  text-wrap: balance;
+}
+
+.reward p {
+  color: oklch(0.38 0.08 42);
+  font-size: 1.08rem;
+  font-weight: 850;
+}
+
+.reward strong {
+  color: oklch(0.54 0.22 28);
+  font-size: 1.18rem;
+  font-weight: 950;
 }
 
 .toast {
@@ -478,6 +580,23 @@ button:disabled {
     min-height: 54px;
   }
 
+  .brand-strip {
+    min-height: 84px;
+    padding: 10px;
+  }
+
+  .brand-strip img {
+    width: 48%;
+  }
+
+  .class-mark span {
+    font-size: 1.08rem;
+  }
+
+  .class-mark strong {
+    font-size: 0.72rem;
+  }
+
   .primary-actions {
     grid-template-columns: 1fr;
   }
@@ -493,6 +612,16 @@ button:disabled {
 
   .admin-row {
     grid-template-columns: 1fr;
+  }
+
+  .page-nav {
+    gap: 8px;
+  }
+
+  .page-nav button {
+    padding: 0 8px;
+    font-size: 0.95rem;
+    gap: 4px;
   }
 }
 

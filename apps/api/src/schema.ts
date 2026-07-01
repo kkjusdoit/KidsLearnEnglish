@@ -23,8 +23,7 @@ export async function seedDemoData() {
   await query(`
     insert into students (student_id, name, display_name)
     values
-      ('26', '安梓西', '安梓西'),
-      ('27', '赵文轩', '赵文轩'),
+      ('22', '林君铭', '林君铭'),
       ('demo', '小朋友', '小朋友')
     on conflict (student_id) do nothing;
   `);

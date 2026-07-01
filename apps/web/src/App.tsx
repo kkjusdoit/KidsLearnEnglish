@@ -80,7 +80,8 @@ function App() {
   const [checkinReward, setCheckinReward] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [mode, setMode] = useState<"student" | "admin">("student");
+  const showAdmin = new URLSearchParams(window.location.search).get("admin") === "1";
+  const [mode, setMode] = useState<"student" | "admin">(showAdmin ? "admin" : "student");
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const recorder = useRecorder();
 
@@ -96,12 +97,23 @@ function App() {
     }
   }, [identity]);
 
+  useEffect(() => {
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current = null;
+      setIsPlaying(false);
+    }
+    recorder.reset();
+  }, [pageIndex]);
+
   const currentPage = lesson?.pages[pageIndex];
   const completedPages = useMemo(
     () => Object.values(pageStates).filter((state) => state === "recorded" || state === "played").length,
     [pageStates]
   );
   const allDone = Boolean(lesson && completedPages >= lesson.pages.length);
+  const checkinDay = stats?.totalCheckins ?? 1;
+  const studentName = identity?.mode === "student" ? identity.student.displayName : "小朋友";
 
   async function handleIdentify(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -122,6 +134,11 @@ function App() {
 
   async function playTeacherAudio() {
     if (!currentPage) return;
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current = null;
+      setIsPlaying(false);
+    }
     recorder.reset();
     setMessage(null);
     const audio = new Audio(mediaUrl(currentPage.audioUrl));
@@ -200,23 +217,33 @@ function App() {
 
   return (
     <main className="shell">
-      <div className="mode-switch">
-        <button type="button" className={mode === "student" ? "active" : ""} onClick={() => setMode("student")}>
-          孩子端
-        </button>
-        <button type="button" className={mode === "admin" ? "active" : ""} onClick={() => setMode("admin")}>
-          管理员
-        </button>
-      </div>
+      {showAdmin ? (
+        <div className="mode-switch">
+          <button type="button" className={mode === "student" ? "active" : ""} onClick={() => setMode("student")}>
+            孩子端
+          </button>
+          <button type="button" className={mode === "admin" ? "active" : ""} onClick={() => setMode("admin")}>
+            管理员
+          </button>
+        </div>
+      ) : null}
 
-      {mode === "admin" ? (
+      {showAdmin && mode === "admin" ? (
         <AdminPanel />
       ) : (
         <>
+          <section className="brand-strip" aria-label="京师幼学蓝湾幼儿园 实验小一班">
+            <img src="/jsyx-brand.png" alt="京师幼学蓝湾幼儿园" />
+            <div className="class-mark">
+              <span>实验小一班</span>
+              <strong>English Learning Challenge</strong>
+            </div>
+          </section>
+
           <section className="topbar" aria-label="学习状态">
             <div>
               <p className="date-label">{lesson.title}</p>
-              <strong>{identity?.mode === "student" ? `${identity.student.displayName}，开始吧` : "小班英语点读"}</strong>
+              <strong>{identity?.mode === "student" ? `${identity.student.displayName}，开始吧` : "实验小一班英语点读"}</strong>
             </div>
             <div className="stats-pill">
               <Flower2 aria-hidden />
@@ -233,7 +260,7 @@ function App() {
                 <input
                   value={identifier}
                   onChange={(event) => setIdentifier(event.target.value)}
-                  placeholder="例如：26 或 安梓西"
+                  placeholder="例如：22 或 林君铭"
                   autoFocus
                 />
                 <button disabled={loading || !identifier.trim()} type="submit">
@@ -319,6 +346,10 @@ function App() {
                   下一页
                   <ArrowRight />
                 </button>
+                <button onClick={playTeacherAudio}>
+                  <RotateCcw />
+                  再来一遍
+                </button>
               </div>
 
               <section className="finish-panel">
@@ -326,9 +357,11 @@ function App() {
                   <p>游客模式可以点读体验。输入本班姓名或学号后，就能保存录音和打卡。</p>
                 ) : checkinReward ? (
                   <div className="reward">
-                    <Flower2 size={52} aria-hidden />
-                    <h2>{checkinReward}</h2>
-                    <p>累计打卡 {stats?.totalCheckins ?? 1} 天</p>
+                    <img src="/jsyx-smile.png" alt="" />
+                    <span className="reward-badge">第 {checkinDay} 天打卡完成</span>
+                    <h2>{studentName}，今天挑战成功！</h2>
+                    <p>{checkinReward}</p>
+                    <strong>Love English, From JSYX</strong>
                   </div>
                 ) : (
                   <button className="finish-button" onClick={completeCheckin} disabled={!allDone || loading}>
