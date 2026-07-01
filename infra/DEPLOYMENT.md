@@ -21,7 +21,7 @@ curl https://kindergarten-english-mvp.pages.dev/api/lessons/today
 curl -X POST https://kindergarten-english-mvp.pages.dev/api/identify \
   -H 'content-type: application/json' \
   --data '{"identifier":"26"}'
-curl -I https://kindergarten-english-mvp.pages.dev/media/demo/apple.mp3
+curl -I https://kindergarten-english-mvp.pages.dev/media/uploads/2026-07-01/page-1.mp3
 ```
 
 ## 快速重新部署

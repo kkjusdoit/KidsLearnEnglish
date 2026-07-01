@@ -16,7 +16,6 @@ tar \
   --exclude apps/web/dist \
   --exclude apps/api/dist \
   --exclude apps/api/storage/recordings \
-  --exclude apps/api/storage/uploads \
   --exclude work \
   --exclude outputs \
   -czf "$TMP_ARCHIVE" -C "$PROJECT_ROOT" .
@@ -50,9 +49,13 @@ EOF
   fi
   sudo docker compose up -d --build postgres api
   API_CONTAINER=\$(sudo docker compose ps -q api)
-  if [ -n "\$API_CONTAINER" ] && [ -d apps/api/storage/demo ]; then
-    sudo docker exec "\$API_CONTAINER" mkdir -p /app/storage/demo
-    sudo docker cp apps/api/storage/demo/. "\$API_CONTAINER:/app/storage/demo/"
+  if [ -n "\$API_CONTAINER" ]; then
+    for STORAGE_SUBDIR in demo uploads; do
+      if [ -d "apps/api/storage/\$STORAGE_SUBDIR" ]; then
+        sudo docker exec "\$API_CONTAINER" mkdir -p "/app/storage/\$STORAGE_SUBDIR"
+        sudo docker cp "apps/api/storage/\$STORAGE_SUBDIR/." "\$API_CONTAINER:/app/storage/\$STORAGE_SUBDIR/"
+      fi
+    done
   fi
 "
 

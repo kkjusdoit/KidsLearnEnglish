@@ -50,18 +50,20 @@ export async function seedDemoData() {
   if (Number(existing.rows[0]?.count ?? 0) > 0) return;
 
   const pages = [
-    ["word", "apple", "/media/demo/apple.mp3", 0, 1500],
-    ["word", "banana", "/media/demo/banana.mp3", 2000, 3500],
-    ["sentence", "I like apples.", "/media/demo/i-like-apples.mp3", 4000, 6500],
-    ["sentence", "Good morning!", "/media/demo/good-morning.mp3", 7000, 9500]
+    ["word", "crayon", "/media/uploads/2026-07-01/page-1.mp3", "/media/uploads/2026-07-01/page-1.jpg", 765, 4162],
+    ["word", "paper", "/media/uploads/2026-07-01/page-2.mp3", "/media/uploads/2026-07-01/page-2.jpg", 5868, 8986],
+    ["word", "pencil", "/media/uploads/2026-07-01/page-3.mp3", "/media/uploads/2026-07-01/page-3.jpg", 10777, 13850],
+    ["word", "scissors", "/media/uploads/2026-07-01/page-4.mp3", "/media/uploads/2026-07-01/page-4.jpg", 16254, 20178],
+    ["word", "backpack", "/media/uploads/2026-07-01/page-5.mp3", "/media/uploads/2026-07-01/page-5.jpg", 22837, 26943],
+    ["word", "book", "/media/uploads/2026-07-01/page-6.mp3", "/media/uploads/2026-07-01/page-6.jpg", 28616, 29173]
   ] as const;
 
   for (const [index, page] of pages.entries()) {
     await query(
       `
         insert into lesson_pages
-          (lesson_id, page_order, page_type, text, audio_url, start_ms, end_ms)
-        values ($1, $2, $3, $4, $5, $6, $7);
+          (lesson_id, page_order, page_type, text, audio_url, image_url, start_ms, end_ms)
+        values ($1, $2, $3, $4, $5, $6, $7, $8);
       `,
       [lessonId, index + 1, ...page]
     );
