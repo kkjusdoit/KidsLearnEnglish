@@ -1,6 +1,30 @@
 # 部署说明
 
-## 快速部署
+## 当前线上环境
+
+已经部署好的地址：
+
+- 前端：`https://kindergarten-english-mvp.pages.dev`
+- 后端公网：`http://34.55.229.129:8080`
+- Pages Functions 上游：`http://34.55.229.129.nip.io:8080`
+- GCE：`newapi-relay-1` / `us-central1-a`
+- Cloudflare Pages project：`kindergarten-english-mvp`
+
+后台入口在前端页面右上角“管理”。管理员密钥保存在 `outputs/deployment-secrets.txt`，不要发到班级群。
+
+当前先用 `nip.io` 给 GCE IP 临时提供 hostname，避免 Cloudflare Pages Function 代理裸 IP 时触发 `error code: 1003`。后续拿到 Cloudflare DNS 编辑权限后，把 `english-api.aitifen.cc` 指到 `34.55.229.129`，再把 Pages secret `API_ORIGIN` 改成正式域名即可。
+
+线上 smoke test：
+
+```bash
+curl https://kindergarten-english-mvp.pages.dev/api/lessons/today
+curl -X POST https://kindergarten-english-mvp.pages.dev/api/identify \
+  -H 'content-type: application/json' \
+  --data '{"identifier":"26"}'
+curl -I https://kindergarten-english-mvp.pages.dev/media/demo/apple.mp3
+```
+
+## 快速重新部署
 
 后端到 GCE：
 
@@ -18,7 +42,7 @@ ADMIN_SHARED_SECRET=...
 复制 `API_ORIGIN` 后部署前端：
 
 ```bash
-API_ORIGIN=http://x.x.x.x:8080 infra/deploy-pages.sh
+API_ORIGIN=http://x.x.x.x.nip.io:8080 infra/deploy-pages.sh
 ```
 
 前端会部署到 Cloudflare Pages 的 `*.pages.dev` HTTPS 地址。浏览器访问 Pages 地址时，`/api/*` 和 `/media/*` 会由 Pages Functions 代理到 GCE 后端，所以不需要你先配置自定义域名。
@@ -75,16 +99,16 @@ curl https://api.你的域名/health
 
 ## 3. Cloudflare Pages 前端
 
-构建配置：
+如果以后改成 Git 集成，构建配置：
 
 - Root directory: `apps/web`
 - Build command: `npm install && npm run build`
 - Build output directory: `dist`
 
-环境变量：
+当前 CLI 部署会把 `API_ORIGIN` 写入 Pages secret。注意从 `apps/web` 目录发布，这样 `functions/` 才会被 Wrangler 一起上传：
 
 ```bash
-VITE_API_BASE_URL=https://api.你的域名
+API_ORIGIN=http://34.55.229.129.nip.io:8080 infra/deploy-pages.sh
 ```
 
 ## 4. 数据库备份
