@@ -26,6 +26,34 @@ import {
 } from "./api";
 import { AdminPanel } from "./admin";
 
+function previewImagePath(url: string) {
+  return url.replace(/(\.[a-z0-9]+)(\?.*)?$/i, ".preview.jpg$2");
+}
+
+function LessonImage({ imageUrl, alt }: { imageUrl: string; alt: string }) {
+  const originalSrc = mediaUrl(imageUrl);
+  const previewSrc = mediaUrl(previewImagePath(imageUrl));
+  const [src, setSrc] = useState(previewSrc);
+
+  useEffect(() => {
+    setSrc(previewSrc);
+  }, [previewSrc]);
+
+  return (
+    <img
+      src={src}
+      alt={alt}
+      loading="eager"
+      decoding="async"
+      onError={() => {
+        if (src !== originalSrc) {
+          setSrc(originalSrc);
+        }
+      }}
+    />
+  );
+}
+
 function FitText({ text, type }: { text: string; type: "word" | "sentence" }) {
   const length = text.length;
   const size =
@@ -204,6 +232,23 @@ function App() {
 
     void playTeacherAudio(currentPage);
   }, [currentPage, identity]);
+
+  useEffect(() => {
+    if (!lesson) {
+      return;
+    }
+
+    const nextPage = lesson.pages[pageIndex + 1];
+    if (!nextPage?.imageUrl) {
+      return;
+    }
+
+    const preview = new Image();
+    preview.src = mediaUrl(previewImagePath(nextPage.imageUrl));
+
+    const original = new Image();
+    original.src = mediaUrl(nextPage.imageUrl);
+  }, [lesson, pageIndex]);
 
   async function handleIdentify(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -462,7 +507,7 @@ function App() {
 
               {currentPage ? (
                 <article className="study-card">
-                  {currentPage.imageUrl ? <img src={mediaUrl(currentPage.imageUrl)} alt="" /> : null}
+                  {currentPage.imageUrl ? <LessonImage imageUrl={currentPage.imageUrl} alt={currentPage.text} /> : null}
                   <FitText text={currentPage.text} type={currentPage.type} />
                   <p className="hint">{currentPage.type === "word" ? "Listen and repeat" : "Read after the teacher"}</p>
 

@@ -76,6 +76,7 @@ PAGES_JSON="$(
   LESSON_DIR="$LESSON_DIR" LESSON_DATE="$LESSON_DATE" LOCAL_STAGE_DIR="$LOCAL_STAGE_DIR" node <<'NODE'
 const fs = require('fs');
 const path = require('path');
+const { spawnSync } = require('child_process');
 
 const lessonDir = process.env.LESSON_DIR;
 const lessonDate = process.env.LESSON_DATE;
@@ -132,6 +133,47 @@ function copyAsset(relativePath, targetBase) {
   const extension = path.extname(relativePath).toLowerCase();
   const targetName = `${targetBase}${extension}`;
   fs.copyFileSync(path.join(lessonDir, relativePath), path.join(localStageDir, targetName));
+  return targetName;
+}
+
+function commandExists(command) {
+  const result = spawnSync(command, ['-version'], { encoding: 'utf8' });
+  return result.status === 0;
+}
+
+function generateImagePreview(relativePath, targetBase) {
+  if (!relativePath) return null;
+  if (!['.jpg', '.jpeg', '.png', '.webp'].includes(path.extname(relativePath).toLowerCase())) {
+    return null;
+  }
+  if (!commandExists('ffmpeg')) {
+    console.warn(`ffmpeg not found; skipping preview generation for ${relativePath}`);
+    return null;
+  }
+
+  const targetName = `${targetBase}.preview.jpg`;
+  const result = spawnSync(
+    'ffmpeg',
+    [
+      '-hide_banner',
+      '-loglevel',
+      'error',
+      '-i',
+      path.join(lessonDir, relativePath),
+      '-vf',
+      'scale=640:-2:force_original_aspect_ratio=decrease',
+      '-q:v',
+      '5',
+      path.join(localStageDir, targetName),
+      '-y'
+    ],
+    { encoding: 'utf8' }
+  );
+
+  if (result.status !== 0) {
+    throw new Error(result.stderr || result.stdout || `Failed to generate preview for ${relativePath}`);
+  }
+
   return targetName;
 }
 
@@ -196,6 +238,9 @@ fs.mkdirSync(localStageDir, { recursive: true });
 const pages = resolvePages().map((page) => {
   const audioTarget = copyAsset(page.audioSource, `page-${page.order}`);
   const imageTarget = page.imageSource ? copyAsset(page.imageSource, `page-${page.order}`) : null;
+  if (page.imageSource) {
+    generateImagePreview(page.imageSource, `page-${page.order}`);
+  }
   return {
     order: page.order,
     type: page.type,

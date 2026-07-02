@@ -1,5 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import { spawnSync } from "node:child_process";
 import { config } from "../src/config.js";
 import { query, closeDb } from "../src/db.js";
 import { migrate } from "../src/schema.js";
@@ -224,6 +225,14 @@ async function importNumberedPages(params: {
           targetBase: `page-${order}`
         })
       : null;
+    if (imageFile) {
+      generateImagePreview({
+        sourceDir,
+        outputDir,
+        sourceName: imageFile,
+        targetBase: `page-${order}`
+      });
+    }
 
     pages.push({
       order,
@@ -279,6 +288,14 @@ async function importManifestPages(params: {
           targetBase: `page-${order}`
         })
       : null;
+    if (imageSource) {
+      generateImagePreview({
+        sourceDir,
+        outputDir,
+        sourceName: imageSource,
+        targetBase: `page-${order}`
+      });
+    }
 
     pages.push({
       order,
@@ -306,6 +323,47 @@ async function copyAsset(params: {
     path.join(params.sourceDir, params.sourceName),
     path.join(params.outputDir, targetName)
   );
+  return targetName;
+}
+
+function generateImagePreview(params: {
+  sourceDir: string;
+  outputDir: string;
+  sourceName: string;
+  targetBase: string;
+}) {
+  if (!IMAGE_EXTENSIONS.includes(path.extname(params.sourceName).toLowerCase() as (typeof IMAGE_EXTENSIONS)[number])) {
+    return null;
+  }
+
+  if (!commandExists("ffmpeg")) {
+    console.warn(`ffmpeg not found; skipping preview generation for ${params.sourceName}`);
+    return null;
+  }
+
+  const targetName = `${params.targetBase}.preview.jpg`;
+  const result = spawnSync(
+    "ffmpeg",
+    [
+      "-hide_banner",
+      "-loglevel",
+      "error",
+      "-i",
+      path.join(params.sourceDir, params.sourceName),
+      "-vf",
+      "scale=640:-2:force_original_aspect_ratio=decrease",
+      "-q:v",
+      "5",
+      path.join(params.outputDir, targetName),
+      "-y"
+    ],
+    { encoding: "utf8" }
+  );
+
+  if (result.status !== 0) {
+    throw new Error(result.stderr || result.stdout || `生成图片小图失败: ${params.sourceName}`);
+  }
+
   return targetName;
 }
 
@@ -351,6 +409,11 @@ async function pathExists(filePath: string) {
   } catch {
     return false;
   }
+}
+
+function commandExists(command: string) {
+  const result = spawnSync(command, ["-version"], { encoding: "utf8" });
+  return result.status === 0;
 }
 
 function normalizeLessonDate(value: string | undefined) {

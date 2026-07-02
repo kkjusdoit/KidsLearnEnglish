@@ -1,0 +1,1839 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>KidsLearnEnglish 素材录入一体化工具</title>
+  
+  <!-- CDNs for lamejs and JSZip -->
+  <script src="https://cdn.jsdelivr.net/npm/lamejs@1.2.1/lame.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: oklch(14% 0.015 240);
+      --panel: oklch(20% 0.02 240 / 0.7);
+      --panel-border: oklch(30% 0.03 240 / 0.4);
+      --ink: oklch(93% 0.01 240);
+      --muted: oklch(70% 0.02 240);
+      --accent: oklch(62% 0.16 230);
+      --accent-hover: oklch(68% 0.18 230);
+      --danger: oklch(60% 0.18 24);
+      --danger-hover: oklch(65% 0.2 24);
+      --success: oklch(65% 0.16 140);
+      --success-hover: oklch(70% 0.18 140);
+      --shadow: 0 12px 36px oklch(8% 0.02 240 / 0.5);
+      font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: var(--bg);
+      color: var(--ink);
+      display: flex;
+      flex-direction: column;
+      overflow-x: hidden;
+    }
+
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 16px 24px;
+      border-bottom: 1px solid var(--panel-border);
+      background: oklch(16% 0.018 240 / 0.85);
+      backdrop-filter: blur(12px);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+
+    h1 {
+      font-size: 20px;
+      margin: 0;
+      font-weight: 700;
+      background: linear-gradient(135deg, oklch(85% 0.12 220), oklch(75% 0.15 320));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .subtitle {
+      font-size: 13px;
+      color: var(--muted);
+      margin: 0;
+    }
+
+    .app-layout {
+      display: grid;
+      grid-template-columns: 320px 1fr 150px; /* Left Input, Middle Wave & Slices, Right Words */
+      gap: 16px;
+      padding: 16px;
+      height: calc(100vh - 65px);
+      min-height: 0;
+    }
+
+    /* For wider screens, make space for side-by-side split panels */
+    @media (min-width: 1200px) {
+      .app-layout {
+        grid-template-columns: 340px 1fr 1fr 280px; /* Input, Audio Slicer, Image Slicer, Words */
+      }
+    }
+
+    aside, .main-panel, .words-panel {
+      background: var(--panel);
+      border: 1px solid var(--panel-border);
+      border-radius: 12px;
+      backdrop-filter: blur(16px);
+      box-shadow: var(--shadow);
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+      overflow: hidden;
+    }
+
+    .panel-header {
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--panel-border);
+      font-weight: 600;
+      font-size: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: oklch(22% 0.02 240 / 0.4);
+    }
+
+    .panel-content {
+      padding: 16px;
+      overflow-y: auto;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    /* Inputs Styling */
+    .form-group {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    label {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    input[type="text"], input[type="number"], select, textarea {
+      background: oklch(16% 0.015 240);
+      border: 1px solid var(--panel-border);
+      border-radius: 8px;
+      color: var(--ink);
+      padding: 8px 12px;
+      font-size: 14px;
+      width: 100%;
+      outline: none;
+      transition: border-color 160ms ease;
+    }
+
+    input[type="text"]:focus, select:focus, textarea:focus {
+      border-color: var(--accent);
+    }
+
+    .file-input-wrapper {
+      position: relative;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .file-btn {
+      flex: 1;
+      text-align: center;
+      cursor: pointer;
+      background: oklch(24% 0.02 240);
+      border: 1px dashed var(--panel-border);
+      border-radius: 8px;
+      padding: 16px;
+      font-size: 13px;
+      transition: background-color 160ms, border-color 160ms;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .file-btn:hover {
+      background: oklch(28% 0.025 240);
+      border-color: var(--accent);
+    }
+
+    .file-btn span.name {
+      font-size: 11px;
+      color: var(--muted);
+      word-break: break-all;
+    }
+
+    /* Buttons */
+    .btn {
+      min-height: 38px;
+      border: 1px solid var(--panel-border);
+      border-radius: 8px;
+      background: oklch(25% 0.02 240);
+      color: var(--ink);
+      padding: 0 16px;
+      cursor: pointer;
+      font-weight: 500;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      transition: all 160ms ease;
+      font-size: 13px;
+    }
+
+    .btn:hover {
+      background: oklch(29% 0.025 240);
+      border-color: oklch(40% 0.04 240);
+    }
+
+    .btn:active {
+      transform: translateY(1px);
+    }
+
+    .btn.primary {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: white;
+      font-weight: 600;
+    }
+
+    .btn.primary:hover {
+      background: var(--accent-hover);
+    }
+
+    .btn.success {
+      background: var(--success);
+      border-color: var(--success);
+      color: white;
+    }
+
+    .btn.success:hover {
+      background: var(--success-hover);
+    }
+
+    .btn.danger {
+      background: var(--danger);
+      border-color: var(--danger);
+      color: white;
+    }
+
+    .btn.danger:hover {
+      background: var(--danger-hover);
+    }
+
+    .btn:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    /* Waveform Container */
+    .waveform-panel {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      min-height: 0;
+      flex: 1;
+    }
+
+    .waveform-wrapper {
+      position: relative;
+      height: 120px;
+      background: oklch(16% 0.015 240);
+      border: 1px solid var(--panel-border);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+
+    #waveformCanvas {
+      width: 100%;
+      height: 100%;
+      display: block;
+      cursor: crosshair;
+    }
+
+    .placeholder-text {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      color: var(--muted);
+      font-size: 13px;
+      gap: 8px;
+      pointer-events: none;
+    }
+
+    /* Image Panel */
+    .image-panel {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      min-height: 0;
+      flex: 1;
+      border-left: 1px solid var(--panel-border);
+    }
+
+    .canvas-wrapper {
+      position: relative;
+      flex: 1;
+      background: oklch(16% 0.015 240);
+      border: 1px solid var(--panel-border);
+      border-radius: 8px;
+      overflow: auto;
+      display: flex;
+      align-items: flex-start;
+      justify-content: flex-start;
+    }
+
+    #imageCanvas {
+      display: block;
+      transform-origin: top left;
+      cursor: crosshair;
+    }
+
+    /* Slices/Items Row Table */
+    .items-panel {
+      flex: 1.2;
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+      border-top: 1px solid var(--panel-border);
+    }
+
+    .items-list {
+      flex: 1;
+      overflow-y: auto;
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .item-row {
+      background: oklch(24% 0.02 240 / 0.5);
+      border: 1px solid var(--panel-border);
+      border-radius: 8px;
+      padding: 10px 14px;
+      display: grid;
+      grid-template-columns: 36px 1fr 180px 100px 72px; /* ID, Word, Audio, BoxInfo, Actions */
+      align-items: center;
+      gap: 12px;
+      transition: all 160ms ease;
+    }
+
+    .item-row.active {
+      border-color: var(--accent);
+      background: oklch(26% 0.04 230 / 0.7);
+      box-shadow: 0 0 12px oklch(62% 0.16 230 / 0.15);
+    }
+
+    .item-id {
+      font-weight: 700;
+      color: var(--accent);
+      font-size: 15px;
+      text-align: center;
+    }
+
+    .audio-inputs {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .audio-inputs input {
+      width: 74px;
+      text-align: center;
+      font-family: monospace;
+      padding: 4px;
+      font-size: 12px;
+    }
+
+    .box-info {
+      font-size: 11px;
+      color: var(--muted);
+      font-family: monospace;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      cursor: pointer;
+    }
+
+    .box-info:hover {
+      color: var(--accent);
+    }
+
+    .item-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 6px;
+    }
+
+    .item-actions button {
+      width: 28px;
+      height: 28px;
+      padding: 0;
+      border-radius: 6px;
+      font-size: 12px;
+    }
+
+    /* Words side panel */
+    .words-textarea {
+      flex: 1;
+      resize: none;
+      font-family: inherit;
+      line-height: 1.6;
+      font-size: 14px;
+      padding: 12px;
+      background: oklch(16% 0.015 240);
+    }
+
+    .words-hint {
+      font-size: 11px;
+      color: var(--muted);
+      padding: 8px 12px;
+      border-top: 1px solid var(--panel-border);
+      background: oklch(18% 0.02 240 / 0.4);
+    }
+
+    /* Tool controls */
+    .toolbar {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+      background: oklch(18% 0.02 240 / 0.5);
+      padding: 10px 16px;
+      border-top: 1px solid var(--panel-border);
+    }
+
+    .status-bar {
+      padding: 8px 24px;
+      font-size: 12px;
+      color: var(--muted);
+      border-top: 1px solid var(--panel-border);
+      background: oklch(12% 0.015 240);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    /* Zoom slider */
+    .zoom-control {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .zoom-control input[type="range"] {
+      width: 100px;
+      accent-color: var(--accent);
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <div>
+      <h1>🍒 KidsLearnEnglish 素材一体化录入助手</h1>
+      <p class="subtitle">音视频提取分割 · 图片智能裁剪 · 单词对齐一键导出</p>
+    </div>
+    <div style="display: flex; gap: 12px; align-items: center;">
+      <div id="dirInfo" style="font-size: 12px; color: var(--muted); display: none;">
+        📂 导出目录: <strong id="dirName" style="color: var(--ink);">未选择</strong>
+      </div>
+      <button id="selectDirBtn" class="btn">📂 选择本地导出目录</button>
+      <button id="exportAllBtn" class="btn primary" disabled>💾 一键导出到文件夹</button>
+      <button id="zipDownloadBtn" class="btn success" disabled>📦 打包下载 ZIP</button>
+    </div>
+  </header>
+
+  <div class="app-layout">
+    
+    <!-- Left Column: Inputs -->
+    <aside>
+      <div class="panel-header">导入多媒体文件</div>
+      <div class="panel-content">
+        
+        <div class="form-group">
+          <label>1. 导入音视频文件 (MP4/MOV/MP3/WAV)</label>
+          <div class="file-input-wrapper">
+            <div class="file-btn" onclick="document.getElementById('audioFileInput').click()">
+              <span>🎵 点击导入视频或音频</span>
+              <span id="audioFileName" class="name">未选择文件</span>
+            </div>
+            <input type="file" id="audioFileInput" accept="audio/*,video/*" style="display: none;">
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>2. 导入教材页大图 (JPG/PNG/WEBP)</label>
+          <div class="file-input-wrapper">
+            <div class="file-btn" onclick="document.getElementById('imageFileInput').click()">
+              <span>🖼️ 点击导入切图背景</span>
+              <span id="imageFileName" class="name">未选择文件</span>
+            </div>
+            <input type="file" id="imageFileInput" accept="image/*" style="display: none;">
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>3. 导出文件夹名称</label>
+          <input type="text" id="outputDirName" placeholder="例如: 2026-07-02">
+        </div>
+
+        <div class="form-group" style="border-top: 1px solid var(--panel-border); padding-top: 12px;">
+          <label>智能辅助功能</label>
+          <div style="display: flex; flex-direction: column; gap: 8px; margin-top: 6px;">
+            <button id="autoAudioSplitBtn" class="btn" disabled>⏱️ 智能静音切分音频</button>
+            <button id="autoImageSplitBtn" class="btn" disabled>📐 智能空白检测切图</button>
+          </div>
+        </div>
+
+        <div style="flex: 1;"></div>
+        
+        <div style="font-size: 11px; color: var(--muted); border-top: 1px solid var(--panel-border); padding-top: 12px; line-height: 1.5;">
+          <strong>提示</strong>：建议先导入视频和图片，然后再输入/粘贴单词。你可以直接在单词框修改单词，会自动同步。本工具不依赖服务器，全部在本地运行。
+        </div>
+
+      </div>
+    </aside>
+
+    <!-- Middle-Left: Waveform & Slices Table -->
+    <div class="main-panel">
+      <div class="panel-header">
+        <span>波形编辑与段落对齐</span>
+        <div id="playbackControls" style="display: none; align-items: center; gap: 8px;">
+          <button id="playBtn" class="btn" style="min-height: 28px; padding: 0 8px;">▶️ 播放</button>
+          <button id="pauseBtn" class="btn" style="min-height: 28px; padding: 0 8px; display: none;">⏸️ 暂停</button>
+          <button id="stopBtn" class="btn" style="min-height: 28px; padding: 0 8px;">⏹️ 停止</button>
+          <span id="playTime" style="font-family: monospace; font-size: 12px; margin-left: 6px;">00:00 / 00:00</span>
+        </div>
+      </div>
+      
+      <div class="panel-content" style="gap: 0; padding: 0;">
+        <!-- Waveform visualizer -->
+        <div class="waveform-panel" style="padding: 12px; flex: 0 0 auto;">
+          <div class="waveform-wrapper">
+            <canvas id="waveformCanvas"></canvas>
+            <div id="waveformPlaceholder" class="placeholder-text">
+              <span>📊 波形可视化区域</span>
+              <span style="font-size: 11px; opacity: 0.7;">导入音视频后自动渲染</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Slices Table -->
+        <div class="items-panel">
+          <div class="panel-header" style="background: transparent; border-top: none;">
+            <span>段落列表</span>
+            <button id="addItemBtn" class="btn success" style="min-height: 28px; padding: 0 8px;">➕ 添加段落</button>
+          </div>
+          <div class="items-list" id="itemsListContainer">
+            <!-- Dynamically populated rows -->
+            <div style="display: flex; align-items: center; justify-content: center; height: 100%; color: var(--muted); font-size: 13px;">
+              请先添加段落或加载音频进行智能检测
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Middle-Right: Image Canvas Panel -->
+    <div class="image-panel">
+      <div class="panel-header">
+        <span>教材切片画板</span>
+        <div class="zoom-control">
+          <span>缩放:</span>
+          <input type="range" id="zoomRange" min="20" max="200" value="100">
+          <span id="zoomVal">100%</span>
+        </div>
+      </div>
+      <div class="panel-content" style="padding: 0; flex: 1; display: flex;">
+        <div class="canvas-wrapper" id="canvasWrapper">
+          <canvas id="imageCanvas"></canvas>
+          <div id="imagePlaceholder" class="placeholder-text" style="position: absolute; inset: 0;">
+            <span>🖼️ 切片交互画板</span>
+            <span style="font-size: 11px; opacity: 0.7;">导入教材图后可绘制切片边界</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Right Column: Words -->
+    <div class="words-panel">
+      <div class="panel-header">单词文本同步</div>
+      <textarea class="words-textarea" id="wordsTextarea" placeholder="在此输入单词列表，一行对应一个切片，例如：
+apple
+banana
+cherry
+..."></textarea>
+      <div class="words-hint">
+        💡 每行一个单词，会自动与段落列表序号 1-to-1 对齐。在左侧列表修改或添加行，这里也会实时同步更新。
+      </div>
+    </div>
+
+  </div>
+
+  <div class="status-bar">
+    <div id="statusMsg">准备就绪</div>
+    <div>2026 KidsLearnEnglish Intake Pro · Native Frontend</div>
+  </div>
+
+  <script>
+    // State Manager
+    const state = {
+      audioContext: null,
+      audioBuffer: null,
+      audioFileName: '',
+      
+      // Image State
+      imageElement: null,
+      imageName: '',
+      zoom: 1.0,
+      
+      // Slices / Items list
+      items: [], // Array of { id, word, start, end, box: {x, y, w, h} }
+      activeId: null, // Currently selected item ID
+      
+      // Audio playback
+      isPlaying: false,
+      sourceNode: null,
+      startTime: 0,
+      pauseTime: 0,
+      currentPlayStart: 0,
+      currentPlayDuration: 0,
+      playProgressTimer: null,
+      
+      // Canvas interaction state
+      isDrawingBox: false,
+      dragHandle: null, // 'tl', 'tr', 'bl', 'br' or 'move'
+      dragStartPos: { x: 0, y: 0 },
+      draggedBox: null,
+      
+      // Export directory
+      directoryHandle: null
+    };
+
+    // DOM Elements
+    const audioFileInput = document.getElementById('audioFileInput');
+    const imageFileInput = document.getElementById('imageFileInput');
+    const autoAudioSplitBtn = document.getElementById('autoAudioSplitBtn');
+    const autoImageSplitBtn = document.getElementById('autoImageSplitBtn');
+    const itemsListContainer = document.getElementById('itemsListContainer');
+    const wordsTextarea = document.getElementById('wordsTextarea');
+    const outputDirName = document.getElementById('outputDirName');
+    const statusMsg = document.getElementById('statusMsg');
+    const selectDirBtn = document.getElementById('selectDirBtn');
+    const exportAllBtn = document.getElementById('exportAllBtn');
+    const zipDownloadBtn = document.getElementById('zipDownloadBtn');
+    
+    // Waveform Canvas
+    const waveCanvas = document.getElementById('waveformCanvas');
+    const waveCtx = waveCanvas.getContext('2d');
+    
+    // Image Canvas
+    const imgCanvas = document.getElementById('imageCanvas');
+    const imgCtx = imgCanvas.getContext('2d');
+    const canvasWrapper = document.getElementById('canvasWrapper');
+    const zoomRange = document.getElementById('zoomRange');
+    const zoomVal = document.getElementById('zoomVal');
+    
+    // Playback Controls
+    const playbackControls = document.getElementById('playbackControls');
+    const playBtn = document.getElementById('playBtn');
+    const pauseBtn = document.getElementById('pauseBtn');
+    const stopBtn = document.getElementById('stopBtn');
+    const playTime = document.getElementById('playTime');
+
+    // Initialize date folder name
+    const today = new Date();
+    const yyyy = today.getFullYear();
+    const mm = String(today.getMonth() + 1).padStart(2, '0');
+    const dd = String(today.getDate()).padStart(2, '0');
+    outputDirName.value = `${yyyy}${mm}${dd}`;
+
+    // --- FILE LOADING ---
+
+    audioFileInput.addEventListener('change', async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      document.getElementById('audioFileName').textContent = file.name;
+      state.audioFileName = file.name.replace(/\.[^/.]+$/, "");
+      setStatus(`正在读取音频: ${file.name}...`);
+
+      try {
+        const arrayBuffer = await file.arrayBuffer();
+        if (!state.audioContext) {
+          state.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        }
+        
+        setStatus('正在解码音频流...');
+        state.audioBuffer = await state.audioContext.decodeAudioData(arrayBuffer);
+        
+        setStatus(`音频加载完成: ${formatTime(state.audioBuffer.duration)}`);
+        document.getElementById('waveformPlaceholder').style.display = 'none';
+        playbackControls.style.display = 'flex';
+        autoAudioSplitBtn.disabled = false;
+        checkEnableExport();
+        
+        resizeWaveCanvas();
+        drawWaveform();
+        updateTimeDisplay(0);
+      } catch (err) {
+        console.error(err);
+        setStatus('音频解码失败，请确保格式支持。');
+        alert('音视频解码失败，如果导入的是视频文件，请尝试使用更常见的 H.264/AAC MP4 格式！');
+      }
+    });
+
+    imageFileInput.addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      document.getElementById('imageFileName').textContent = file.name;
+      state.imageName = file.name.replace(/\.[^/.]+$/, "");
+      setStatus(`正在读取大图: ${file.name}...`);
+
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const img = new Image();
+        img.onload = () => {
+          state.imageElement = img;
+          document.getElementById('imagePlaceholder').style.display = 'none';
+          autoImageSplitBtn.disabled = false;
+          checkEnableExport();
+          
+          resetZoom();
+          resizeImageCanvas();
+          drawImage();
+          setStatus(`图片加载完成: ${img.naturalWidth} x ${img.naturalHeight}`);
+        };
+        img.src = event.target.result;
+      };
+      reader.readAsDataURL(file);
+    });
+
+    // --- UI/RENDER WAVEFORM ---
+
+    function setStatus(text) {
+      statusMsg.textContent = text;
+    }
+
+    function formatTime(sec) {
+      if (isNaN(sec)) return "00:00.00";
+      const m = Math.floor(sec / 60);
+      const s = Math.floor(sec % 60);
+      const ms = Math.floor((sec % 1) * 100);
+      return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}.${String(ms).padStart(2, '0')}`;
+    }
+
+    function resizeWaveCanvas() {
+      waveCanvas.width = waveCanvas.parentElement.clientWidth;
+      waveCanvas.height = waveCanvas.parentElement.clientHeight;
+    }
+
+    function drawWaveform() {
+      if (!state.audioBuffer) return;
+      const width = waveCanvas.width;
+      const height = waveCanvas.height;
+      
+      waveCtx.fillStyle = 'oklch(16% 0.015 240)';
+      waveCtx.fillRect(0, 0, width, height);
+
+      // Draw segments
+      state.items.forEach((item, index) => {
+        const startX = (item.start / state.audioBuffer.duration) * width;
+        const endX = (item.end / state.audioBuffer.duration) * width;
+        
+        // Active segment background
+        if (state.activeId === item.id) {
+          waveCtx.fillStyle = 'oklch(62% 0.16 230 / 0.25)';
+        } else {
+          waveCtx.fillStyle = 'oklch(62% 0.16 230 / 0.06)';
+        }
+        waveCtx.fillRect(startX, 0, endX - startX, height);
+
+        // Segment boundaries
+        waveCtx.strokeStyle = state.activeId === item.id ? 'oklch(62% 0.16 230)' : 'oklch(35% 0.04 240 / 0.5)';
+        waveCtx.lineWidth = state.activeId === item.id ? 2 : 1;
+        
+        waveCtx.beginPath();
+        waveCtx.moveTo(startX, 0);
+        waveCtx.lineTo(startX, height);
+        waveCtx.stroke();
+
+        waveCtx.beginPath();
+        waveCtx.moveTo(endX, 0);
+        waveCtx.lineTo(endX, height);
+        waveCtx.stroke();
+        
+        // Label
+        waveCtx.fillStyle = 'oklch(70% 0.02 240)';
+        waveCtx.font = '10px monospace';
+        waveCtx.fillText(index + 1, startX + 4, 12);
+      });
+
+      // Draw audio samples
+      const channelData = state.audioBuffer.getChannelData(0);
+      const step = Math.ceil(channelData.length / width);
+      const amp = height / 2;
+
+      waveCtx.strokeStyle = 'oklch(62% 0.16 230 / 0.6)';
+      waveCtx.lineWidth = 1;
+      waveCtx.beginPath();
+
+      for (let i = 0; i < width; i++) {
+        let min = 1.0;
+        let max = -1.0;
+        for (let j = 0; j < step; j++) {
+          const index = i * step + j;
+          if (index < channelData.length) {
+            const val = channelData[index];
+            if (val < min) min = val;
+            if (val > max) max = val;
+          }
+        }
+        const y1 = (1 + min) * amp;
+        const y2 = (1 + max) * amp;
+        waveCtx.moveTo(i, y1);
+        waveCtx.lineTo(i, y2);
+      }
+      waveCtx.stroke();
+    }
+
+    // --- PLAYBACK CONTROL ---
+
+    function play(startSec = 0, durationSec = null) {
+      if (!state.audioBuffer) return;
+      stopPlayback();
+
+      state.isPlaying = true;
+      playBtn.style.display = 'none';
+      pauseBtn.style.display = 'inline-flex';
+
+      state.audioContext.resume();
+      state.sourceNode = state.audioContext.createBufferSource();
+      state.sourceNode.buffer = state.audioBuffer;
+      state.sourceNode.connect(state.audioContext.destination);
+
+      state.currentPlayStart = startSec;
+      state.currentPlayDuration = durationSec;
+      state.startTime = state.audioContext.currentTime - startSec;
+
+      if (durationSec !== null) {
+        state.sourceNode.start(0, startSec, durationSec);
+        state.sourceNode.onended = () => {
+          if (state.isPlaying && (state.audioContext.currentTime - state.startTime >= startSec + durationSec)) {
+            stopPlayback();
+          }
+        };
+      } else {
+        state.sourceNode.start(0, startSec);
+      }
+
+      state.playProgressTimer = setInterval(() => {
+        const elapsed = state.audioContext.currentTime - state.startTime;
+        updateTimeDisplay(elapsed);
+      }, 50);
+    }
+
+    function stopPlayback() {
+      state.isPlaying = false;
+      playBtn.style.display = 'inline-flex';
+      pauseBtn.style.display = 'none';
+      
+      if (state.sourceNode) {
+        try { state.sourceNode.stop(); } catch(e) {}
+        state.sourceNode = null;
+      }
+      if (state.playProgressTimer) {
+        clearInterval(state.playProgressTimer);
+        state.playProgressTimer = null;
+      }
+    }
+
+    function updateTimeDisplay(sec) {
+      const dur = state.audioBuffer ? state.audioBuffer.duration : 0;
+      playTime.textContent = `${formatTime(sec)} / ${formatTime(dur)}`;
+    }
+
+    playBtn.addEventListener('click', () => {
+      // If there is an active item, play its segment. Else play full.
+      const activeItem = state.items.find(it => it.id === state.activeId);
+      if (activeItem) {
+        play(activeItem.start, activeItem.end - activeItem.start);
+      } else {
+        play(0);
+      }
+    });
+
+    pauseBtn.addEventListener('click', () => {
+      stopPlayback();
+    });
+
+    stopBtn.addEventListener('click', () => {
+      stopPlayback();
+      updateTimeDisplay(0);
+    });
+
+    // --- CANVAS IMAGE DRAG AND RESIZE ---
+
+    function resetZoom() {
+      state.zoom = 1.0;
+      zoomRange.value = 100;
+      zoomVal.textContent = "100%";
+    }
+
+    zoomRange.addEventListener('input', (e) => {
+      const val = parseInt(e.target.value);
+      state.zoom = val / 100;
+      zoomVal.textContent = `${val}%`;
+      resizeImageCanvas();
+      drawImage();
+    });
+
+    function resizeImageCanvas() {
+      if (!state.imageElement) return;
+      imgCanvas.width = state.imageElement.naturalWidth * state.zoom;
+      imgCanvas.height = state.imageElement.naturalHeight * state.zoom;
+    }
+
+    function drawImage() {
+      if (!state.imageElement) return;
+      
+      imgCtx.clearRect(0, 0, imgCanvas.width, imgCanvas.height);
+      imgCtx.drawImage(state.imageElement, 0, 0, imgCanvas.width, imgCanvas.height);
+
+      // Draw crop boxes
+      state.items.forEach((item, index) => {
+        if (!item.box) return;
+
+        const x = item.box.x * state.zoom;
+        const y = item.box.y * state.zoom;
+        const w = item.box.w * state.zoom;
+        const h = item.box.h * state.zoom;
+
+        const isActive = item.id === state.activeId;
+
+        // Draw selection fill
+        imgCtx.fillStyle = isActive ? 'oklch(62% 0.16 230 / 0.15)' : 'oklch(62% 0.16 230 / 0.03)';
+        imgCtx.fillRect(x, y, w, h);
+
+        // Draw selection border
+        imgCtx.strokeStyle = isActive ? 'oklch(62% 0.16 230)' : 'oklch(62% 0.16 230 / 0.4)';
+        imgCtx.lineWidth = isActive ? 2.5 : 1.5;
+        imgCtx.strokeRect(x, y, w, h);
+
+        // Draw handles for active box
+        if (isActive) {
+          imgCtx.fillStyle = 'white';
+          imgCtx.strokeStyle = 'oklch(62% 0.16 230)';
+          imgCtx.lineWidth = 1.5;
+          const hs = 6; // handle size
+          
+          const corners = [
+            { x: x, y: y },         // TL
+            { x: x + w, y: y },     // TR
+            { x: x, y: y + h },     // BL
+            { x: x + w, y: y + h }  // BR
+          ];
+
+          corners.forEach(c => {
+            imgCtx.fillRect(c.x - hs/2, c.y - hs/2, hs, hs);
+            imgCtx.strokeRect(c.x - hs/2, c.y - hs/2, hs, hs);
+          });
+        }
+
+        // Draw index badge
+        imgCtx.fillStyle = isActive ? 'oklch(62% 0.16 230)' : 'oklch(20% 0.02 240 / 0.8)';
+        imgCtx.font = 'bold 12px sans-serif';
+        const badgeText = `${index + 1}`;
+        const textWidth = imgCtx.measureText(badgeText).width;
+        
+        imgCtx.beginPath();
+        imgCtx.roundRect(x + 4, y + 4, textWidth + 10, 18, 4);
+        imgCtx.fill();
+        
+        imgCtx.fillStyle = 'white';
+        imgCtx.fillText(badgeText, x + 9, y + 17);
+      });
+    }
+
+    // Hit testing for handles or boxes
+    function getHitTarget(clickX, clickY) {
+      if (!state.imageElement) return null;
+      const hs = 8; // detection radius
+
+      // First check active box handles (highest priority)
+      const activeItem = state.items.find(it => it.id === state.activeId);
+      if (activeItem && activeItem.box) {
+        const x = activeItem.box.x * state.zoom;
+        const y = activeItem.box.y * state.zoom;
+        const w = activeItem.box.w * state.zoom;
+        const h = activeItem.box.h * state.zoom;
+
+        const handles = [
+          { name: 'tl', x: x, y: y },
+          { name: 'tr', x: x + w, y: y },
+          { name: 'bl', x: x, y: y + h },
+          { name: 'br', x: x + w, y: y + h }
+        ];
+
+        for (const handle of handles) {
+          if (Math.hypot(clickX - handle.x, clickY - handle.y) <= hs) {
+            return { type: 'handle', name: handle.name, item: activeItem };
+          }
+        }
+      }
+
+      // Check box bodies (reverse order to get top-most first)
+      for (let i = state.items.length - 1; i >= 0; i--) {
+        const item = state.items[i];
+        if (!item.box) continue;
+
+        const x = item.box.x * state.zoom;
+        const y = item.box.y * state.zoom;
+        const w = item.box.w * state.zoom;
+        const h = item.box.h * state.zoom;
+
+        if (clickX >= x && clickX <= x + w && clickY >= y && clickY <= y + h) {
+          return { type: 'box', item };
+        }
+      }
+
+      return null;
+    }
+
+    imgCanvas.addEventListener('mousedown', (e) => {
+      if (!state.imageElement) return;
+      const rect = imgCanvas.getBoundingClientRect();
+      const clickX = e.clientX - rect.left;
+      const clickY = e.clientY - rect.top;
+
+      const hit = getHitTarget(clickX, clickY);
+      
+      if (hit) {
+        selectItem(hit.item.id);
+        state.draggedBox = hit.item;
+        
+        if (hit.type === 'handle') {
+          state.dragHandle = hit.name;
+        } else {
+          state.dragHandle = 'move';
+          state.dragStartPos = { 
+            x: (clickX / state.zoom) - hit.item.box.x, 
+            y: (clickY / state.zoom) - hit.item.box.y 
+          };
+        }
+      } else {
+        // Start drawing a new box if we have an active item without a box, or create a new row
+        let targetItem = state.items.find(it => it.id === state.activeId);
+        if (!targetItem) {
+          targetItem = addNewItem();
+        }
+        
+        state.draggedBox = targetItem;
+        state.dragHandle = 'create';
+        const startX = clickX / state.zoom;
+        const startY = clickY / state.zoom;
+        targetItem.box = { x: startX, y: startY, w: 0, h: 0 };
+        state.dragStartPos = { x: startX, y: startY };
+        selectItem(targetItem.id);
+      }
+    });
+
+    imgCanvas.addEventListener('mousemove', (e) => {
+      if (!state.imageElement || !state.draggedBox) return;
+      const rect = imgCanvas.getBoundingClientRect();
+      const clickX = e.clientX - rect.left;
+      const clickY = e.clientY - rect.top;
+
+      const box = state.draggedBox.box;
+      const imgWidth = state.imageElement.naturalWidth;
+      const imgHeight = state.imageElement.naturalHeight;
+
+      if (state.dragHandle === 'create') {
+        const curX = Math.max(0, Math.min(imgWidth, clickX / state.zoom));
+        const curY = Math.max(0, Math.min(imgHeight, clickY / state.zoom));
+        
+        box.x = Math.min(state.dragStartPos.x, curX);
+        box.y = Math.min(state.dragStartPos.y, curY);
+        box.w = Math.abs(state.dragStartPos.x - curX);
+        box.h = Math.abs(state.dragStartPos.y - curY);
+      } else if (state.dragHandle === 'move') {
+        const targetX = (clickX / state.zoom) - state.dragStartPos.x;
+        const targetY = (clickY / state.zoom) - state.dragStartPos.y;
+
+        box.x = Math.max(0, Math.min(imgWidth - box.w, targetX));
+        box.y = Math.max(0, Math.min(imgHeight - box.h, targetY));
+      } else if (state.dragHandle) {
+        // Handle resizing
+        const curX = Math.max(0, Math.min(imgWidth, clickX / state.zoom));
+        const curY = Math.max(0, Math.min(imgHeight, clickY / state.zoom));
+
+        let x1 = box.x;
+        let y1 = box.y;
+        let x2 = box.x + box.w;
+        let y2 = box.y + box.h;
+
+        if (state.dragHandle.includes('l')) x1 = curX;
+        if (state.dragHandle.includes('r')) x2 = curX;
+        if (state.dragHandle.includes('t')) y1 = curY;
+        if (state.dragHandle.includes('b')) y2 = curY;
+
+        box.x = Math.min(x1, x2);
+        box.y = Math.min(y1, y2);
+        box.w = Math.abs(x1 - x2);
+        box.h = Math.abs(y1 - y2);
+      }
+
+      drawImage();
+      updateItemRowDisplay(state.draggedBox);
+    });
+
+    window.addEventListener('mouseup', () => {
+      state.dragHandle = null;
+      state.draggedBox = null;
+    });
+
+    // --- SEGMENT/ITEM LIST ACTIONS ---
+
+    function selectItem(id) {
+      state.activeId = id;
+      
+      document.querySelectorAll('.item-row').forEach(row => {
+        if (parseInt(row.dataset.id) === id) {
+          row.classList.add('active');
+          row.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        } else {
+          row.classList.remove('active');
+        }
+      });
+
+      drawWaveform();
+      drawImage();
+    }
+
+    function addNewItem(start = 0, end = 5, box = null) {
+      const id = Date.now() + Math.floor(Math.random() * 1000);
+      const index = state.items.length;
+      
+      const item = {
+        id,
+        word: '',
+        start: start,
+        end: end,
+        box: box
+      };
+
+      state.items.push(item);
+      renderItemsList();
+      selectItem(id);
+      syncWordsTextareaFromList();
+      return item;
+    }
+
+    function deleteItem(id) {
+      const idx = state.items.findIndex(it => it.id === id);
+      if (idx !== -1) {
+        state.items.splice(idx, 1);
+        renderItemsList();
+        
+        if (state.items.length > 0) {
+          selectItem(state.items[Math.min(idx, state.items.length - 1)].id);
+        } else {
+          state.activeId = null;
+          drawWaveform();
+          drawImage();
+        }
+        syncWordsTextareaFromList();
+      }
+    }
+
+    function renderItemsList() {
+      itemsListContainer.innerHTML = '';
+      
+      if (state.items.length === 0) {
+        itemsListContainer.innerHTML = `
+          <div style="display: flex; align-items: center; justify-content: center; height: 100%; color: var(--muted); font-size: 13px;">
+            请先添加段落或加载音频进行智能检测
+          </div>
+        `;
+        return;
+      }
+
+      state.items.forEach((item, index) => {
+        const row = document.createElement('div');
+        row.className = `item-row ${item.id === state.activeId ? 'active' : ''}`;
+        row.dataset.id = item.id;
+
+        // ID
+        const idCol = document.createElement('div');
+        idCol.className = 'item-id';
+        idCol.textContent = index + 1;
+        row.appendChild(idCol);
+
+        // Word Input
+        const wordInput = document.createElement('input');
+        wordInput.type = 'text';
+        wordInput.value = item.word;
+        wordInput.placeholder = `段落 ${index + 1} 文本`;
+        wordInput.addEventListener('input', (e) => {
+          item.word = e.target.value;
+          syncWordsTextareaFromList();
+        });
+        row.appendChild(wordInput);
+
+        // Audio range inputs
+        const audioCol = document.createElement('div');
+        audioCol.className = 'audio-inputs';
+        
+        const startInp = document.createElement('input');
+        startInp.type = 'number';
+        startInp.step = '0.1';
+        startInp.value = item.start.toFixed(1);
+        
+        const endInp = document.createElement('input');
+        endInp.type = 'number';
+        endInp.step = '0.1';
+        endInp.value = item.end.toFixed(1);
+
+        startInp.addEventListener('change', (e) => {
+          item.start = Math.max(0, parseFloat(e.target.value) || 0);
+          drawWaveform();
+        });
+        endInp.addEventListener('change', (e) => {
+          const maxDur = state.audioBuffer ? state.audioBuffer.duration : 9999;
+          item.end = Math.min(maxDur, Math.max(item.start + 0.1, parseFloat(e.target.value) || 0));
+          drawWaveform();
+        });
+
+        audioCol.appendChild(startInp);
+        audioCol.appendChild(document.createTextNode('~'));
+        audioCol.appendChild(endInp);
+
+        // Quick set buttons for audio
+        const setStartBtn = document.createElement('button');
+        setStartBtn.className = 'btn';
+        setStartBtn.style.padding = '0 6px';
+        setStartBtn.style.minHeight = '24px';
+        setStartBtn.textContent = '🚩';
+        setStartBtn.title = '设置开始点为当前播放进度';
+        setStartBtn.addEventListener('click', () => {
+          if (!state.audioContext) return;
+          const elapsed = state.isPlaying ? (state.audioContext.currentTime - state.startTime) : 0;
+          item.start = elapsed;
+          startInp.value = elapsed.toFixed(1);
+          drawWaveform();
+        });
+        audioCol.appendChild(setStartBtn);
+
+        row.appendChild(audioCol);
+
+        // Box info
+        const boxCol = document.createElement('div');
+        boxCol.className = 'box-info';
+        boxCol.title = '点击可在画板上定位或创建切片';
+        boxCol.textContent = item.box ? `x:${Math.round(item.box.x)} y:${Math.round(item.box.y)}` : '⚠️ 缺切片';
+        boxCol.addEventListener('click', () => {
+          if (item.box && state.imageElement) {
+            // Scroll image viewport to box
+            const boxX = item.box.x * state.zoom;
+            const boxY = item.box.y * state.zoom;
+            canvasWrapper.scrollTo({
+              left: boxX - canvasWrapper.clientWidth / 2 + (item.box.w * state.zoom / 2),
+              top: boxY - canvasWrapper.clientHeight / 2 + (item.box.h * state.zoom / 2),
+              behavior: 'smooth'
+            });
+          }
+        });
+        row.appendChild(boxCol);
+
+        // Actions
+        const actionsCol = document.createElement('div');
+        actionsCol.className = 'item-actions';
+
+        const rowPlayBtn = document.createElement('button');
+        rowPlayBtn.className = 'btn';
+        rowPlayBtn.textContent = '▶️';
+        rowPlayBtn.title = '试听这段音频';
+        rowPlayBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          play(item.start, item.end - item.start);
+        });
+        actionsCol.appendChild(rowPlayBtn);
+
+        const rowDelBtn = document.createElement('button');
+        rowDelBtn.className = 'btn danger';
+        rowDelBtn.textContent = '✕';
+        rowDelBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          deleteItem(item.id);
+        });
+        actionsCol.appendChild(rowDelBtn);
+
+        row.appendChild(actionsCol);
+
+        // Row click triggers selection
+        row.addEventListener('click', () => {
+          selectItem(item.id);
+        });
+
+        itemsListContainer.appendChild(row);
+      });
+    }
+
+    function updateItemRowDisplay(item) {
+      const row = document.querySelector(`.item-row[data-id="${item.id}"]`);
+      if (!row) return;
+
+      const boxCol = row.querySelector('.box-info');
+      if (boxCol) {
+        boxCol.textContent = item.box ? `x:${Math.round(item.box.x)} y:${Math.round(item.box.y)}` : '⚠️ 缺切片';
+      }
+    }
+
+    document.getElementById('addItemBtn').addEventListener('click', () => {
+      let start = 0;
+      if (state.items.length > 0) {
+        start = state.items[state.items.length - 1].end;
+      }
+      addNewItem(start, start + 3);
+    });
+
+    // --- SYNC WORDS WITH TEXTAREA ---
+
+    function syncWordsTextareaFromList() {
+      const text = state.items.map(it => it.word).join('\n');
+      wordsTextarea.value = text;
+    }
+
+    wordsTextarea.addEventListener('input', () => {
+      const lines = wordsTextarea.value.split('\n');
+      
+      while (state.items.length < lines.length) {
+        let start = 0;
+        if (state.items.length > 0) {
+          start = state.items[state.items.length - 1].end;
+        }
+        addNewItem(start, start + 3);
+      }
+
+      lines.forEach((line, index) => {
+        if (state.items[index]) {
+          state.items[index].word = line.trim();
+        }
+      });
+
+      renderItemsList();
+    });
+
+    // --- AUTO SEGMENTATION ALGORITHMS ---
+
+    // 1. Silent Detection for Audio Slicing
+    autoAudioSplitBtn.addEventListener('click', async () => {
+      if (!state.audioBuffer) return;
+      
+      setStatus('分析音频静音分段中...');
+      const channelData = state.audioBuffer.getChannelData(0);
+      const sampleRate = state.audioBuffer.sampleRate;
+      
+      const frameSize = 1024;
+      const threshold = 0.015; 
+      const minSilenceDuration = 0.6; 
+      const minSilenceSamples = minSilenceDuration * sampleRate;
+      
+      const segments = [];
+      let inSound = false;
+      let soundStart = 0;
+      let silenceSamples = 0;
+      
+      for (let i = 0; i < channelData.length; i += frameSize) {
+        let maxVal = 0;
+        for (let j = 0; j < frameSize && (i + j) < channelData.length; j++) {
+          const val = Math.abs(channelData[i + j]);
+          if (val > maxVal) maxVal = val;
+        }
+        
+        const isSilent = maxVal < threshold;
+        const currentSec = i / sampleRate;
+
+        if (inSound) {
+          if (isSilent) {
+            silenceSamples += frameSize;
+            if (silenceSamples >= minSilenceSamples) {
+              const soundEnd = currentSec - minSilenceDuration;
+              if (soundEnd - soundStart > 0.4) {
+                segments.push({ start: soundStart, end: soundEnd });
+              }
+              inSound = false;
+              silenceSamples = 0;
+            }
+          } else {
+            silenceSamples = 0;
+          }
+        } else {
+          if (!isSilent) {
+            inSound = true;
+            soundStart = currentSec;
+            silenceSamples = 0;
+          }
+        }
+      }
+
+      if (inSound) {
+        segments.push({ start: soundStart, end: channelData.length / sampleRate });
+      }
+
+      if (segments.length === 0) {
+        alert('没有检测到明显的段落分界，请手动调整分段！');
+        setStatus('智能切分失败');
+        return;
+      }
+
+      if (confirm(`智能检测到 ${segments.length} 个音段，是否替换当前段落列表？`)) {
+        state.items = [];
+        segments.forEach((seg) => {
+          const paddedStart = Math.max(0, seg.start - 0.15);
+          const paddedEnd = Math.min(state.audioBuffer.duration, seg.end + 0.15);
+          addNewItem(paddedStart, paddedEnd);
+        });
+        setStatus(`已生成 ${segments.length} 个音段`);
+      } else {
+        setStatus('切分取消');
+      }
+    });
+
+    // 2. Image White Space detection for Auto Slicing
+    autoImageSplitBtn.addEventListener('click', () => {
+      if (!state.imageElement) return;
+
+      setStatus('智能切片分析中...');
+      
+      const img = state.imageElement;
+      const canvas = document.createElement('canvas');
+      canvas.width = img.naturalWidth;
+      canvas.height = img.naturalHeight;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0);
+
+      const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const data = imgData.data;
+
+      const colInk = new Array(canvas.width).fill(0);
+      const rowInk = new Array(canvas.height).fill(0);
+
+      const bgR = data[0];
+      const bgG = data[1];
+      const bgB = data[2];
+      const tolerance = 15;
+
+      for (let y = 0; y < canvas.height; y++) {
+        for (let x = 0; x < canvas.width; x++) {
+          const idx = (y * canvas.width + x) * 4;
+          const r = data[idx];
+          const g = data[idx+1];
+          const b = data[idx+2];
+          const a = data[idx+3];
+
+          const isBg = a < 50 || (Math.abs(r - bgR) < tolerance && Math.abs(g - bgG) < tolerance && Math.abs(b - bgB) < tolerance);
+          if (!isBg) {
+            colInk[x]++;
+            rowInk[y]++;
+          }
+        }
+      }
+
+      const boxes = [];
+      const minRowGap = 12; 
+      let inContentRow = false;
+      let rowStart = 0;
+      let rowGaps = [];
+      let blankRowsCount = 0;
+
+      for (let y = 0; y < canvas.height; y++) {
+        const hasInk = rowInk[y] > 2; 
+        if (inContentRow) {
+          if (!hasInk) {
+            blankRowsCount++;
+            if (blankRowsCount >= minRowGap) {
+              const rowEnd = y - minRowGap;
+              rowGaps.push({ start: rowStart, end: rowEnd });
+              inContentRow = false;
+              blankRowsCount = 0;
+            }
+          } else {
+            blankRowsCount = 0;
+          }
+        } else {
+          if (hasInk) {
+            inContentRow = true;
+            rowStart = y;
+            blankRowsCount = 0;
+          }
+        }
+      }
+      if (inContentRow) {
+        rowGaps.push({ start: rowStart, end: canvas.height - 1 });
+      }
+
+      const minColGap = 10;
+      rowGaps.forEach(row => {
+        let inContentCol = false;
+        let colStart = 0;
+        let blankColsCount = 0;
+
+        for (let x = 0; x < canvas.width; x++) {
+          let colHasInk = false;
+          for (let y = row.start; y <= row.end; y++) {
+            const idx = (y * canvas.width + x) * 4;
+            const r = data[idx];
+            const g = data[idx+1];
+            const b = data[idx+2];
+            const a = data[idx+3];
+            const isBg = a < 50 || (Math.abs(r - bgR) < tolerance && Math.abs(g - bgG) < tolerance && Math.abs(b - bgB) < tolerance);
+            if (!isBg) {
+              colHasInk = true;
+              break;
+            }
+          }
+
+          if (inContentCol) {
+            if (!colHasInk) {
+              blankColsCount++;
+              if (blankColsCount >= minColGap) {
+                const colEnd = x - minColGap;
+                boxes.push({
+                  x: colStart,
+                  y: row.start,
+                  w: colEnd - colStart,
+                  h: row.end - row.start
+                });
+                inContentCol = false;
+                blankColsCount = 0;
+              }
+            } else {
+              blankColsCount = 0;
+            }
+          } else {
+            if (colHasInk) {
+              inContentCol = true;
+              colStart = x;
+              blankColsCount = 0;
+            }
+          }
+        }
+        if (inContentCol) {
+          boxes.push({
+            x: colStart,
+            y: row.start,
+            w: canvas.width - 1 - colStart,
+            h: row.end - row.start
+          });
+        }
+      });
+
+      const shrinkedBoxes = boxes.map(box => {
+        let minX = box.x + box.w;
+        let maxX = box.x;
+        let minY = box.y + box.h;
+        let maxY = box.y;
+
+        for (let y = box.y; y < box.y + box.h; y++) {
+          for (let x = box.x; x < box.x + box.w; x++) {
+            const idx = (y * canvas.width + x) * 4;
+            const r = data[idx];
+            const g = data[idx+1];
+            const b = data[idx+2];
+            const a = data[idx+3];
+            const isBg = a < 50 || (Math.abs(r - bgR) < tolerance && Math.abs(g - bgG) < tolerance && Math.abs(b - bgB) < tolerance);
+            if (!isBg) {
+              if (x < minX) minX = x;
+              if (x > maxX) maxX = x;
+              if (y < minY) minY = y;
+              if (y > maxY) maxY = y;
+            }
+          }
+        }
+
+        if (maxX >= minX && maxY >= minY) {
+          return {
+            x: Math.max(0, minX - 4),
+            y: Math.max(0, minY - 4),
+            w: Math.min(canvas.width - minX, (maxX - minX) + 8),
+            h: Math.min(canvas.height - minY, (maxY - minY) + 8)
+          };
+        }
+        return box;
+      }).filter(box => box.w > 10 && box.h > 10);
+
+      if (shrinkedBoxes.length === 0) {
+        alert('未能自动切片，请确认图片背景是否为纯白，或使用手动框选切片！');
+        setStatus('自动切片失败');
+        return;
+      }
+
+      if (confirm(`智能检测到 ${shrinkedBoxes.length} 个卡片切片，是否替换？`)) {
+        while (state.items.length < shrinkedBoxes.length) {
+          let start = 0;
+          if (state.items.length > 0) {
+            start = state.items[state.items.length - 1].end;
+          }
+          addNewItem(start, start + 3);
+        }
+
+        shrinkedBoxes.forEach((box, i) => {
+          if (state.items[i]) {
+            state.items[i].box = box;
+          }
+        });
+
+        if (state.items.length > shrinkedBoxes.length) {
+          state.items.splice(shrinkedBoxes.length);
+        }
+
+        renderItemsList();
+        drawImage();
+        syncWordsTextareaFromList();
+        setStatus(`已生成 ${shrinkedBoxes.length} 个切片`);
+      } else {
+        setStatus('自动切片取消');
+      }
+    });
+
+    // --- MULTIMEDIA COMPILING & EXPORT --
+
+    function checkEnableExport() {
+      const hasAudio = state.audioBuffer !== null;
+      const hasImg = state.imageElement !== null;
+      exportAllBtn.disabled = !(hasAudio && hasImg);
+      zipDownloadBtn.disabled = !(hasAudio && hasImg);
+    }
+
+    selectDirBtn.addEventListener('click', async () => {
+      try {
+        state.directoryHandle = await window.showDirectoryPicker({ mode: 'readwrite' });
+        document.getElementById('dirName').textContent = state.directoryHandle.name;
+        document.getElementById('dirInfo').style.display = 'block';
+        setStatus(`已选择导出目标文件夹: ${state.directoryHandle.name}`);
+      } catch (err) {
+        console.warn('选择目录失败或取消:', err);
+      }
+    });
+
+    function float32ToInt16(float32Array) {
+      const int16Array = new Int16Array(float32Array.length);
+      for (let i = 0; i < float32Array.length; i++) {
+        let s = Math.max(-1, Math.min(1, float32Array[i]));
+        int16Array[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+      }
+      return int16Array;
+    }
+
+    async function encodeSegmentToMp3Blob(audioBuffer, startSec, endSec) {
+      const sampleRate = audioBuffer.sampleRate;
+      const numChannels = audioBuffer.numberOfChannels;
+      
+      const startSample = Math.floor(startSec * sampleRate);
+      const endSample = Math.floor(endSec * sampleRate);
+      const length = endSample - startSample;
+      
+      if (length <= 0) return null;
+
+      const left = audioBuffer.getChannelData(0).subarray(startSample, endSample);
+      const right = numChannels > 1 ? audioBuffer.getChannelData(1).subarray(startSample, endSample) : null;
+      
+      const leftInt16 = float32ToInt16(left);
+      const rightInt16 = right ? float32ToInt16(right) : null;
+
+      const mp3encoder = new lamejs.Mp3Encoder(numChannels, sampleRate, 128);
+      const mp3Data = [];
+      const sampleBlockSize = 1152;
+
+      if (numChannels === 2) {
+        for (let i = 0; i < leftInt16.length; i += sampleBlockSize) {
+          const leftChunk = leftInt16.subarray(i, i + sampleBlockSize);
+          const rightChunk = rightInt16.subarray(i, i + sampleBlockSize);
+          const mp3buf = mp3encoder.encodeBuffer(leftChunk, rightChunk);
+          if (mp3buf.length > 0) {
+            mp3Data.push(new Uint8Array(mp3buf));
+          }
+        }
+      } else {
+        for (let i = 0; i < leftInt16.length; i += sampleBlockSize) {
+          const leftChunk = leftInt16.subarray(i, i + sampleBlockSize);
+          const mp3buf = mp3encoder.encodeBuffer(leftChunk);
+          if (mp3buf.length > 0) {
+            mp3Data.push(new Uint8Array(mp3buf));
+          }
+        }
+      }
+
+      const mp3buf = mp3encoder.flush();
+      if (mp3buf.length > 0) {
+        mp3Data.push(new Uint8Array(mp3buf));
+      }
+
+      return new Blob(mp3Data, { type: 'audio/mp3' });
+    }
+
+    async function cropImageToPngBlob(img, box) {
+      const canvas = document.createElement('canvas');
+      canvas.width = box.w;
+      canvas.height = box.h;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, box.x, box.y, box.w, box.h, 0, 0, box.w, box.h);
+      
+      return new Promise((resolve) => {
+        canvas.toBlob((blob) => resolve(blob), 'image/png');
+      });
+    }
+
+    exportAllBtn.addEventListener('click', async () => {
+      if (!state.audioBuffer || !state.imageElement) return;
+
+      if (!state.directoryHandle) {
+        alert('请先点击右上角“选择本地导出目录”，选择你要导出的文件夹路径！');
+        return;
+      }
+
+      const folderName = outputDirName.value.trim() || 'Intake-Export';
+      
+      const missingBoxIdx = state.items.findIndex(it => !it.box);
+      if (missingBoxIdx !== -1) {
+        if (!confirm(`第 ${missingBoxIdx + 1} 个段落缺少图片切图选区，是否继续导出？（缺少选区的页面图片将跳过导出）`)) {
+          return;
+        }
+      }
+
+      try {
+        setStatus('正在生成多媒体切片...');
+        
+        const subDir = await state.directoryHandle.getDirectoryHandle(folderName, { create: true });
+        const audioDir = await subDir.getDirectoryHandle('audio', { create: true });
+        const imageDir = await subDir.getDirectoryHandle('image', { create: true });
+
+        for (let i = 0; i < state.items.length; i++) {
+          const item = state.items[i];
+          const num = i + 1;
+          
+          setStatus(`正在导出第 ${num}/${state.items.length} 个音视频切片...`);
+
+          const mp3Blob = await encodeSegmentToMp3Blob(state.audioBuffer, item.start, item.end);
+          if (mp3Blob) {
+            const audioFile = await audioDir.getFileHandle(`${num}.mp3`, { create: true });
+            const writable = await audioFile.createWritable();
+            await writable.write(mp3Blob);
+            await writable.close();
+          }
+
+          if (item.box) {
+            const pngBlob = await cropImageToPngBlob(state.imageElement, item.box);
+            const imageFile = await imageDir.getFileHandle(`${num}.png`, { create: true });
+            const writable = await imageFile.createWritable();
+            await writable.write(pngBlob);
+            await writable.close();
+          }
+        }
+
+        const wordsText = state.items.map(it => it.word).join('\n');
+        const wordsBlob = new Blob([wordsText], { type: 'text/plain;charset=utf-8' });
+        const wordsFile = await subDir.getFileHandle('words.txt', { create: true });
+        const writable = await wordsFile.createWritable();
+        await writable.write(wordsBlob);
+        await writable.close();
+
+        setStatus(`🎉 导出成功！文件已存入 ${state.directoryHandle.name}/${folderName}/`);
+        alert(`导出成功！\n文件已完整写入至本地文件夹：${state.directoryHandle.name}/${folderName}/\n包含了 audio/ (MP3), image/ (PNG) 和 words.txt。`);
+      } catch (err) {
+        console.error(err);
+        setStatus('导出出错，请确认写入权限。');
+        alert(`导出失败，错误原因: ${err.message}`);
+      }
+    });
+
+    zipDownloadBtn.addEventListener('click', async () => {
+      if (!state.audioBuffer || !state.imageElement) return;
+
+      const folderName = outputDirName.value.trim() || 'Intake-Export';
+      setStatus('打包 ZIP 压缩包中...');
+
+      try {
+        const zip = new JSZip();
+        const root = zip.folder(folderName);
+        const audioDir = root.folder('audio');
+        const imageDir = root.folder('image');
+
+        for (let i = 0; i < state.items.length; i++) {
+          const item = state.items[i];
+          const num = i + 1;
+          setStatus(`正在打包第 ${num}/${state.items.length} 个多媒体段...`);
+
+          const mp3Blob = await encodeSegmentToMp3Blob(state.audioBuffer, item.start, item.end);
+          if (mp3Blob) {
+            audioDir.file(`${num}.mp3`, mp3Blob);
+          }
+
+          if (item.box) {
+            const pngBlob = await cropImageToPngBlob(state.imageElement, item.box);
+            imageDir.file(`${num}.png`, pngBlob);
+          }
+        }
+
+        const wordsText = state.items.map(it => it.word).join('\n');
+        root.file('words.txt', wordsText);
+
+        setStatus('正在生成 ZIP 文件并触发下载...');
+        const zipBlob = await zip.generateAsync({ type: 'blob' });
+        
+        const url = URL.createObjectURL(zipBlob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${folderName}.zip`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+
+        setStatus('🎉 ZIP 打包下载完成！');
+      } catch (err) {
+        console.error(err);
+        setStatus('ZIP 打包失败');
+        alert(`ZIP 打包失败: ${err.message}`);
+      }
+    });
+
+    window.addEventListener('resize', () => {
+      resizeWaveCanvas();
+      drawWaveform();
+    });
+
+  </script>
+</body>
+</html>
