@@ -2050,7 +2050,7 @@ cherry
       return new Blob(mp3Data, { type: 'audio/mp3' });
     }
 
-    async function cropImageToPngBlob(img, box) {
+    async function cropImageToWebpBlob(img, box) {
       const canvas = document.createElement('canvas');
       canvas.width = box.w;
       canvas.height = box.h;
@@ -2058,7 +2058,7 @@ cherry
       ctx.drawImage(img, box.x, box.y, box.w, box.h, 0, 0, box.w, box.h);
       
       return new Promise((resolve) => {
-        canvas.toBlob((blob) => resolve(blob), 'image/png');
+        canvas.toBlob((blob) => resolve(blob), 'image/webp', 0.85);
       });
     }
 
@@ -2101,10 +2101,10 @@ cherry
           }
 
           if (item.box) {
-            const pngBlob = await cropImageToPngBlob(state.imageElement, item.box);
-            const imageFile = await imageDir.getFileHandle(`${num}.png`, { create: true });
+            const webpBlob = await cropImageToWebpBlob(state.imageElement, item.box);
+            const imageFile = await imageDir.getFileHandle(`${num}.webp`, { create: true });
             const writable = await imageFile.createWritable();
-            await writable.write(pngBlob);
+            await writable.write(webpBlob);
             await writable.close();
           }
         }
@@ -2117,7 +2117,7 @@ cherry
         await writable.close();
 
         setStatus(`🎉 导出成功！文件已存入 ${state.directoryHandle.name}/${folderName}/`);
-        alert(`导出成功！\n文件已完整写入至本地文件夹：${state.directoryHandle.name}/${folderName}/\n包含了 audio/ (MP3), image/ (PNG) 和 words.txt。`);
+        alert(`导出成功！\n文件已完整写入至本地文件夹：${state.directoryHandle.name}/${folderName}/\n包含了 audio/ (MP3), image/ (WebP) 和 words.txt。`);
       } catch (err) {
         console.error(err);
         setStatus('导出出错，请确认写入权限。');
@@ -2148,8 +2148,8 @@ cherry
           }
 
           if (item.box) {
-            const pngBlob = await cropImageToPngBlob(state.imageElement, item.box);
-            imageDir.file(`${num}.png`, pngBlob);
+            const webpBlob = await cropImageToWebpBlob(state.imageElement, item.box);
+            imageDir.file(`${num}.webp`, webpBlob);
           }
         }
 
