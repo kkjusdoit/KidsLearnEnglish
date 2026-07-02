@@ -28,20 +28,28 @@ curl -I https://kindergarten-english-mvp.pages.dev/media/uploads/2026-07-01/page
 
 现在推荐直接走人工素材目录导入，不再依赖自动裁图作为主流程。
 
-目录最低约定：
+推荐目录约定：
 
 ```text
-page-1.jpg
-page-1.mp3
-page-2.jpg
-page-2.mp3
-words.txt
+20260703/
+  audio/
+    1.mp3
+    2.mp3
+    3.mp3
+  image/
+    1.jpg
+    2.jpg
+    3.jpg
+  words.txt
 ```
+
+`words.txt` 每行一个词，顺序对应编号。也兼容旧的 `page-1.jpg / page-1.mp3 / words.txt` 平铺格式。
 
 发布当天课程：
 
 ```bash
-npm run media:import -w @kindergarten-english/api -- /abs/path/to/lesson-dir 2026-07-03
+npm run media:import -w @kindergarten-english/api -- /abs/path/to/20260703 2026-07-03
+bash /Users/linkunkun/Documents/Codex/2026-07-01/zhe/.codex/skills/lesson-video-intake/scripts/publish-lesson-remote.sh /abs/path/to/20260703 2026-07-03
 ```
 
 如果只是更新当天课程素材，不改页面代码，前端不用重新发。只需要把后端这次更新同步到 GCE 即可。
@@ -71,30 +79,32 @@ npm run media:import -w @kindergarten-english/api -- /abs/path/to/lesson-dir 202
 
 ### 2. 准备一个当天素材目录
 
-建议每天都建一个独立目录，例如：
+建议每天都建一个独立目录，目录名直接就是日期，例如：
 
 ```text
-work/2026-07-03-lesson/
-  lesson.mp4
-  page-1.jpg
-  page-1.mp3
-  page-2.jpg
-  page-2.mp3
-  ...
+work/daily-lessons/20260703/
+  audio/
+    1.mp3
+    2.mp3
+    3.mp3
+  image/
+    1.jpg
+    2.jpg
+    3.jpg
   words.txt
 ```
 
-最终能导入的网站目录，最低只需要这三类文件：
+最终能导入的网站目录，最低只需要这三类内容：
 
 ```text
-page-1.jpg
-page-1.mp3
-page-2.jpg
-page-2.mp3
+audio/1.mp3
+audio/2.mp3
+image/1.jpg
+image/2.jpg
 words.txt
 ```
 
-`words.txt` 里每行一个单词，顺序和页码一一对应。
+`words.txt` 里每行一个单词，顺序和编号一一对应。图片如果暂时没有，也可以先只放 `audio/*.mp3 + words.txt`。
 
 ### 3. 从视频提取音频和图片
 
@@ -111,12 +121,12 @@ words.txt
 做法：
 
 1. 把原始 `lesson.mp4` 放进当天目录
-2. 用你本地已有的人工工具，把视频手工导出成按页素材目录
+2. 用你本地已有的人工工具，把视频手工导出成按编号素材目录
 3. 导出结果至少要有：
-   - `page-1.jpg`
-   - `page-1.mp3`
-   - `page-2.jpg`
-   - `page-2.mp3`
+   - `audio/1.mp3`
+   - `audio/2.mp3`
+   - `image/1.jpg`
+   - `image/2.jpg`
    - ...
 4. 自己快速看一遍图片和音频，确认编号、顺序、单词对应关系都对
 5. 新建 `words.txt`
@@ -136,12 +146,12 @@ npm run media:process -w @kindergarten-english/api -- /abs/path/to/lesson.mp4 20
 /Users/linkunkun/Documents/Codex/2026-07-01/zhe/apps/api/scripts/process-media.ts
 ```
 
-这个脚本会自动生成一版：
+这个脚本会自动生成一版草稿，之后你可以把结果整理进最终目录：
 
-- `page-1.mp3`
-- `page-1.jpg`
-- `page-2.mp3`
-- `page-2.jpg`
+- `audio/1.mp3`
+- `image/1.jpg`
+- `audio/2.mp3`
+- `image/2.jpg`
 - `manifest.json`
 
 但这只是草稿，仍然要人工检查。尤其是：
@@ -154,9 +164,9 @@ npm run media:process -w @kindergarten-english/api -- /abs/path/to/lesson.mp4 20
 
 你每天交给网站前，先确认这几个点：
 
-- `page-N.jpg` 和 `page-N.mp3` 数量一致
+- `audio/N.*` 和 `image/N.*` 数量一致
 - `words.txt` 行数和页数一致
-- 页码从 `page-1` 连续编号，不要跳号
+- 编号从 `1` 连续编号，不要跳号
 - 图片能直接看
 - 音频能直接播
 
@@ -171,7 +181,7 @@ ls -1 /abs/path/to/lesson-dir
 素材确认好以后，在仓库根目录运行：
 
 ```bash
-npm run media:import -w @kindergarten-english/api -- /abs/path/to/lesson-dir 2026-07-03
+npm run media:import -w @kindergarten-english/api -- /abs/path/to/20260703 2026-07-03
 ```
 
 这一步会做三件事：
@@ -190,15 +200,16 @@ npm run media:import -w @kindergarten-english/api -- /abs/path/to/lesson-dir 202
 
 比如只是新的一天的图片、音频、词表变了，页面样式没改。
 
-这时只需要同步后端：
+这时最直接的是：
 
 ```bash
-infra/deploy-gce.sh
+bash /Users/linkunkun/Documents/Codex/2026-07-01/zhe/.codex/skills/lesson-video-intake/scripts/publish-lesson-remote.sh /abs/path/to/20260703 2026-07-03
 ```
 
 原因很简单：
 
-- 当天课程数据和音频图片都在 API 这边
+- 它会把 `audio/` 和 `image/` 自动整理成服务端需要的 `page-1.*`
+- 它会上传媒体、创建或更新当天 lesson、替换当天 pages
 - 前端页面本身没有变
 - Pages 上的孩子端会继续请求后端最新的 `/api/lessons/today`
 
@@ -241,27 +252,57 @@ curl -I https://kindergarten-english-mvp.pages.dev/media/uploads/2026-07-03/page
 
 如果你只想记住最短路径，就记这 4 步：
 
-1. 用人工工具把视频处理成 `page-N.jpg + page-N.mp3 + words.txt`
-2. 跑 `npm run media:import -w @kindergarten-english/api -- /abs/path/to/lesson-dir YYYY-MM-DD`
-3. 跑 `infra/deploy-gce.sh`
+1. 用人工工具把视频处理成 `audio/N.mp3 + image/N.jpg + words.txt`
+2. 跑 `npm run media:import -w @kindergarten-english/api -- /abs/path/to/20260703 YYYY-MM-DD`
+3. 跑 `bash /Users/linkunkun/Documents/Codex/2026-07-01/zhe/.codex/skills/lesson-video-intake/scripts/publish-lesson-remote.sh /abs/path/to/20260703 YYYY-MM-DD`
 4. 用 `curl` 检查 `today` 和 `page-1.mp3`
 
-## 前端更新方式
+## 前端极速打包与直连部署（AI 协作首选）
 
-前端现在推荐优先用这个直连脚本，避开本机 `wrangler pages deploy` 在 Node 25 下偶发卡死的问题：
+> [!IMPORTANT]
+> **关于 Node 25 环境下的构建与部署卡死问题**：
+> 在这台机器上运行 `vite build` 或 `wrangler pages deploy` 经常会卡住挂起。
+> 已经实现并验证了一套**极速且稳定**的替代方案：
+> 1. 使用 `esbuild` 快速手动打包。
+> 2. 使用项目内置的直连脚本 `deploy-pages-direct.mjs` 直接请求 Cloudflare Pages API 部署。
+
+### 1. 手动编译打包 (只需 200~300ms)
+在根目录下运行以下命令，完成清理、静态资源复制、esbuild 极速编译打包并自动生成 `index.html`：
 
 ```bash
-npm run build
+rm -rf apps/web/dist && \
+mkdir -p apps/web/dist/assets && \
+cp apps/web/public/_headers apps/web/dist/_headers && \
+cp apps/web/public/jsyx-brand.png apps/web/public/jsyx-smile.png apps/web/dist/ && \
+./node_modules/.bin/esbuild apps/web/src/main.tsx --bundle --format=esm --splitting --sourcemap --outdir=apps/web/dist/assets --define:import.meta.env.DEV=false --define:import.meta.env.VITE_API_BASE_URL=undefined --log-level=info && \
+cat > apps/web/dist/index.html <<'HTML'
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#f6fbff" />
+    <title>实验小一班英语点读</title>
+    <link rel="stylesheet" href="/assets/main.css" />
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/assets/main.js"></script>
+  </body>
+</html>
+HTML
+```
+
+### 2. 直连部署 (秒级上传)
+打包完成后，直接运行以下命令发布前端：
+
+```bash
 API_ORIGIN=http://34.55.229.129.nip.io:8080 node infra/deploy-pages-direct.mjs apps/web/dist
 ```
 
-只改前端页面时，直接跑上面两行就够了。
-
-脚本会自动：
-
-- 读取本机 `~/.wrangler/config/default.toml` 的 OAuth token
-- 上传 `apps/web/dist` 静态资源到 Pages
-- 生成一个最小代理 Worker，把 `/api/*` 和 `/media/*` 转发到 `API_ORIGIN`
+#### 原理解析：
+* **为什么快？**：`esbuild` 用 Go 编写，免去了 Vite/Rollup 庞大的 JavaScript 初始化开销；而 `deploy-pages-direct.mjs` 直接读取本地 `~/.wrangler/config/default.toml` 的 OAuth Token 并通过 REST API 交互，绕过了复杂的 `wrangler` CLI 程序。
+* **增量上传**：直连脚本会自动计算文件哈希，只上传有内容变更的文件。
 
 ## 快速重新部署
 
