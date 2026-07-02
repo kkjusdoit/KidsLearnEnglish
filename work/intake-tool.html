@@ -1251,10 +1251,27 @@ cherry
           };
         }
       } else {
-        // Start drawing a new box if we have an active item without a box, or create a new row
+        // Start drawing a new box
         let targetItem = state.items.find(it => it.id === state.activeId);
-        if (!targetItem) {
-          targetItem = addNewItem();
+        
+        // If active item already has a box, automatically find the first item without a box
+        // to assign the new selection box to. Otherwise create a new item.
+        if (targetItem && targetItem.box) {
+          const itemWithoutBox = state.items.find(it => !it.box);
+          if (itemWithoutBox) {
+            targetItem = itemWithoutBox;
+            selectItem(itemWithoutBox.id);
+          } else {
+            targetItem = addNewItem();
+          }
+        } else if (!targetItem) {
+          const itemWithoutBox = state.items.find(it => !it.box);
+          if (itemWithoutBox) {
+            targetItem = itemWithoutBox;
+            selectItem(itemWithoutBox.id);
+          } else {
+            targetItem = addNewItem();
+          }
         }
         
         state.draggedBox = targetItem;
@@ -1337,6 +1354,22 @@ cherry
         state.isDraggingAudioStart = false;
         state.isDraggingAudioEnd = false;
         renderItemsList();
+      }
+    });
+
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        // Only trigger if we are not editing in input or textarea fields
+        if (document.activeElement.tagName !== 'INPUT' && document.activeElement.tagName !== 'TEXTAREA') {
+          const activeItem = state.items.find(it => it.id === state.activeId);
+          if (activeItem && activeItem.box) {
+            activeItem.box = null;
+            drawImage();
+            renderItemsList();
+            setStatus(`已清除第 ${state.items.indexOf(activeItem) + 1} 个段落的切片选区`);
+            e.preventDefault();
+          }
+        }
       }
     });
 
