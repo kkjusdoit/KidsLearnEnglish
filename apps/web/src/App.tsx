@@ -90,7 +90,7 @@ function App() {
   const [lesson, setLesson] = useState<Lesson | null>(null);
   const [stats, setStats] = useState<StudentStats | null>(null);
   const [pageIndex, setPageIndex] = useState(0);
-  const [autoMode, setAutoMode] = useState(true);
+  const [autoMode, setAutoMode] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
   const [checkinReward, setCheckinReward] = useState<string | null>(null);
   const [editingCalendar, setEditingCalendar] = useState(false);
