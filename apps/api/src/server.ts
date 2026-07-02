@@ -109,6 +109,29 @@ async function getPublishedLessonByDate(date: string) {
   };
 }
 
+async function getLatestPublishedLessonOnOrBeforeDate(date: string) {
+  const lessons = await query<{
+    id: string;
+    lesson_date: string;
+    title: string;
+    status: "draft" | "published";
+  }>(
+    `
+      select id, lesson_date::text, title, status
+      from lessons
+      where lesson_date <= $1::date and status = 'published'
+      order by lesson_date desc
+      limit 1
+    `,
+    [date]
+  );
+
+  const lesson = lessons.rows[0];
+  if (!lesson) return null;
+
+  return getPublishedLessonByDate(lesson.lesson_date);
+}
+
 function multipartFieldValue(field: unknown) {
   if (!field || Array.isArray(field)) return "";
   if (typeof field === "object" && "value" in field) {
@@ -523,9 +546,9 @@ export async function buildServer() {
   });
 
   app.get("/api/lessons/today", async (_request, reply) => {
-    const lesson = await getPublishedLessonByDate(dateKeyInShanghai());
+    const lesson = await getLatestPublishedLessonOnOrBeforeDate(dateKeyInShanghai());
     if (!lesson) {
-      return reply.code(404).send({ error: "今天的课程还没有发布" });
+      return reply.code(404).send({ error: "还没有发布任何课程" });
     }
     return lesson;
   });

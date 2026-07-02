@@ -384,34 +384,48 @@ function App() {
             </div>
           </section>
 
-          <section className="lesson-tabs" aria-label="课程切换">
+          <section className="lesson-switcher" aria-label="课程切换">
             <button
               type="button"
               className={lessonMode === "today" ? "active" : ""}
               disabled={loadingLesson}
               onClick={() => void loadTodayLesson()}
             >
-              <Play size={18} />
-              今天
+              <Play size={20} />
+              今日学习
             </button>
-            <div className="review-picker">
-              <CalendarDays size={18} aria-hidden />
-              <select
-                value={lesson.date}
-                disabled={loadingLesson || lessons.length === 0}
-                onChange={(event) => void loadReviewLesson(event.target.value)}
-              >
-                {lessons.length === 0 ? (
-                  <option value={lesson.date}>暂无复习课</option>
-                ) : (
-                  lessons.map((item) => (
-                    <option key={item.id} value={item.date}>
-                      {formatLessonDate(item.date)} · {item.pageCount} 页
-                    </option>
-                  ))
-                )}
-              </select>
-            </div>
+            <button
+              type="button"
+              className={lessonMode === "review" ? "active" : ""}
+              disabled={loadingLesson || lessons.length === 0}
+              onClick={() => {
+                const firstReview = lessons.find((item) => item.date !== todayKey) ?? lessons[0];
+                if (firstReview) void loadReviewLesson(firstReview.date);
+              }}
+            >
+              <CalendarDays size={20} />
+              往期复习
+            </button>
+            {lessonMode === "review" ? (
+              <div className="review-picker">
+                <CalendarDays size={18} aria-hidden />
+                <select
+                  value={lesson.date}
+                  disabled={loadingLesson || lessons.length === 0}
+                  onChange={(event) => void loadReviewLesson(event.target.value)}
+                >
+                  {lessons.length === 0 ? (
+                    <option value={lesson.date}>暂无复习课</option>
+                  ) : (
+                    lessons.map((item) => (
+                      <option key={item.id} value={item.date}>
+                        {formatLessonDate(item.date)} · {item.pageCount} 页
+                      </option>
+                    ))
+                  )}
+                </select>
+              </div>
+            ) : null}
           </section>
 
           {!identity ? (
