@@ -91,7 +91,22 @@ bash /Users/linkunkun/Documents/Codex/2026-07-01/zhe/.codex/skills/lesson-video-
 
 现在的推荐流程是人工准备好每天的音频和图片，再直接导入网站。
 
-最低目录约定：
+推荐直接用这个更省事的目录格式：
+
+```text
+20260703/
+  audio/
+    1.mp3
+    2.mp3
+  image/
+    1.jpg
+    2.jpg
+  words.txt
+```
+
+`words.txt` 每行一个单词，顺序对应 `audio/1 + image/1`、`audio/2 + image/2`。
+
+也兼容旧格式：
 
 ```text
 my-lesson/
@@ -102,25 +117,32 @@ my-lesson/
   words.txt
 ```
 
-`words.txt` 每行一个单词，顺序对应 `page-1 / page-2 / ...`。
-
 导入并发布当天课程：
 
 ```bash
-npm run media:import -w @kindergarten-english/api -- /abs/path/to/my-lesson 2026-07-03
+npm run media:import -w @kindergarten-english/api -- /abs/path/to/20260703 2026-07-03
 ```
 
 也支持直接传词表：
 
 ```bash
-npm run media:import -w @kindergarten-english/api -- /abs/path/to/my-lesson 2026-07-03 --words crayon,paper,pencil,scissors,backpack,book
+npm run media:import -w @kindergarten-english/api -- /abs/path/to/20260703 2026-07-03 --words crayon,paper,pencil,scissors,backpack,book
 ```
 
+如果目录名就是 `20260703` 或 `2026-07-03`，导入脚本也能自动识别日期。  
 如果目录里放 `manifest.json`，可覆盖标题、状态、每页文本和可选的 `startMs/endMs`。导入脚本会：
 
 - 复制素材到 `apps/api/storage/uploads/<date>/`
 - upsert 当天 `lessons`
 - 替换当天 `lesson_pages`
+
+线上发布当天课程：
+
+```bash
+bash /Users/linkunkun/Documents/Codex/2026-07-01/zhe/.codex/skills/lesson-video-intake/scripts/publish-lesson-remote.sh /abs/path/to/20260703 2026-07-03
+```
+
+这个发布脚本也直接支持 `audio/1.mp3 + image/1.jpg + words.txt` 目录，不需要你手工改成 `page-1.*`。
 
 导入脚本绝对路径：
 

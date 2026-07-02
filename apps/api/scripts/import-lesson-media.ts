@@ -52,6 +52,12 @@ if (!sourceDirArg) {
       "  page-2.jpg  page-2.mp3",
       "  words.txt or manifest.json",
       "",
+      "Or simplified layout:",
+      "  20260703/",
+      "    audio/1.mp3  audio/2.mp3",
+      "    image/1.jpg  image/2.jpg",
+      "    words.txt",
+      "",
       "Options:",
       "  --words crayon,paper,pencil",
       "  --title \"2026-07-03 English\"",
@@ -66,23 +72,26 @@ await main().finally(closeDb);
 
 async function main() {
   const manifest = await readManifest(sourceDir);
-  const date = positional[1] ?? options.get("date") ?? manifest?.date ?? new Date().toISOString().slice(0, 10);
+  const date =
+    normalizeLessonDate(positional[1]) ??
+    normalizeLessonDate(options.get("date")) ??
+    normalizeLessonDate(manifest?.date) ??
+    inferDateFromDirectory(sourceDir) ??
+    new Date().toISOString().slice(0, 10);
   const title = options.get("title") ?? manifest?.title ?? `${date} English`;
   const status = parseStatus(options.get("status") ?? manifest?.status ?? "published");
   const outputDir = path.join(config.localStorageDir, "uploads", date);
   const cliWords = splitCsv(options.get("words"));
-  const sourceFiles = await fs.readdir(sourceDir);
 
   await migrate();
   await fs.mkdir(outputDir, { recursive: true });
 
   const pages = manifest?.pages?.length
-    ? await importManifestPages({ sourceDir, outputDir, date, sourceFiles, pages: manifest.pages })
+    ? await importManifestPages({ sourceDir, outputDir, date, pages: manifest.pages })
     : await importNumberedPages({
         sourceDir,
         outputDir,
         date,
-        sourceFiles,
         words: cliWords.length ? cliWords : await resolveWords(sourceDir, manifest)
       });
 
@@ -188,20 +197,19 @@ async function importNumberedPages(params: {
   sourceDir: string;
   outputDir: string;
   date: string;
-  sourceFiles: string[];
   words: string[];
 }) {
-  const { sourceDir, outputDir, date, sourceFiles, words } = params;
+  const { sourceDir, outputDir, date, words } = params;
   const pages: ImportedPage[] = [];
 
   for (const [index, text] of words.entries()) {
     const order = index + 1;
-    const audioFile = findMatchingFile(sourceFiles, `page-${order}`, AUDIO_EXTENSIONS);
+    const audioFile = await findAssetForOrder(sourceDir, order, "audio");
     if (!audioFile) {
       throw new Error(`缺少第 ${order} 页音频文件`);
     }
 
-    const imageFile = findMatchingFile(sourceFiles, `page-${order}`, IMAGE_EXTENSIONS);
+    const imageFile = await findAssetForOrder(sourceDir, order, "image");
     const audioTarget = await copyAsset({
       sourceDir,
       outputDir,
@@ -233,10 +241,9 @@ async function importManifestPages(params: {
   sourceDir: string;
   outputDir: string;
   date: string;
-  sourceFiles: string[];
   pages: ManifestPage[];
 }) {
-  const { sourceDir, outputDir, date, sourceFiles } = params;
+  const { sourceDir, outputDir, date } = params;
   const sortedPages = [...params.pages].sort((left, right) => (left.order ?? 0) - (right.order ?? 0));
   const pages: ImportedPage[] = [];
 
@@ -248,7 +255,7 @@ async function importManifestPages(params: {
     }
 
     const audioSource =
-      page.audio ?? findMatchingFile(sourceFiles, `page-${order}`, AUDIO_EXTENSIONS);
+      page.audio ?? (await findAssetForOrder(sourceDir, order, "audio"));
     if (!audioSource) {
       throw new Error(`第 ${order} 页缺少音频文件`);
     }
@@ -256,7 +263,7 @@ async function importManifestPages(params: {
     const imageSource =
       page.image === null
         ? null
-        : page.image ?? findMatchingFile(sourceFiles, `page-${order}`, IMAGE_EXTENSIONS);
+        : page.image ?? (await findAssetForOrder(sourceDir, order, "image"));
 
     const audioTarget = await copyAsset({
       sourceDir,
@@ -318,11 +325,49 @@ function parseStatus(value: string) {
   return value;
 }
 
-function findMatchingFile(files: string[], base: string, extensions: readonly string[]) {
-  return files.find((file) => {
-    const ext = path.extname(file).toLowerCase();
-    return path.basename(file, ext) === base && extensions.includes(ext);
-  });
+async function findAssetForOrder(sourceDir: string, order: number, kind: "audio" | "image") {
+  const extensions = kind === "audio" ? AUDIO_EXTENSIONS : IMAGE_EXTENSIONS;
+  const folders = kind === "audio" ? ["", "audio"] : ["", "image"];
+  const basenames = [`page-${order}`, `${order}`];
+
+  for (const folder of folders) {
+    for (const basename of basenames) {
+      for (const extension of extensions) {
+        const relativePath = folder ? path.join(folder, `${basename}${extension}`) : `${basename}${extension}`;
+        if (await pathExists(path.join(sourceDir, relativePath))) {
+          return relativePath;
+        }
+      }
+    }
+  }
+
+  return null;
+}
+
+async function pathExists(filePath: string) {
+  try {
+    await fs.access(filePath);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function normalizeLessonDate(value: string | undefined) {
+  if (!value) {
+    return null;
+  }
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return value;
+  }
+  if (/^\d{8}$/.test(value)) {
+    return `${value.slice(0, 4)}-${value.slice(4, 6)}-${value.slice(6, 8)}`;
+  }
+  return null;
+}
+
+function inferDateFromDirectory(dir: string) {
+  return normalizeLessonDate(path.basename(dir));
 }
 
 const AUDIO_EXTENSIONS = [".mp3", ".m4a", ".wav", ".aac", ".webm", ".ogg"] as const;
