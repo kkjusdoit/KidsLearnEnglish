@@ -3,6 +3,7 @@ import type { FormEvent } from "react";
 import {
   ArrowLeft,
   ArrowRight,
+  CalendarDays,
   Copy,
   Flower2,
   Pause,
@@ -12,8 +13,17 @@ import {
   Sparkles,
   UserRound
 } from "lucide-react";
-import type { IdentityResponse, Lesson, StudentStats } from "@kindergarten-english/shared";
-import { createCheckin, getStats, getTodayLesson, identify, mediaUrl, updateCheckinDay } from "./api";
+import type { IdentityResponse, Lesson, LessonSummary, StudentStats } from "@kindergarten-english/shared";
+import {
+  createCheckin,
+  getLessonByDate,
+  getStats,
+  getTodayLesson,
+  identify,
+  listLessons,
+  mediaUrl,
+  updateCheckinDay
+} from "./api";
 import { AdminPanel } from "./admin";
 
 function FitText({ text, type }: { text: string; type: "word" | "sentence" }) {
@@ -53,6 +63,16 @@ function formatCheckinDay(day: number) {
     .join("");
 }
 
+function formatLessonDate(date: string) {
+  const parsed = new Date(`${date}T12:00:00+08:00`);
+  return new Intl.DateTimeFormat("zh-CN", {
+    timeZone: "Asia/Shanghai",
+    month: "long",
+    day: "numeric",
+    weekday: "short"
+  }).format(parsed);
+}
+
 function dateKeyInShanghai(date = new Date()) {
   const formatter = new Intl.DateTimeFormat("en-CA", {
     timeZone: "Asia/Shanghai",
@@ -88,6 +108,10 @@ function App() {
   const [identifier, setIdentifier] = useState("");
   const [identity, setIdentity] = useState<IdentityResponse | null>(null);
   const [lesson, setLesson] = useState<Lesson | null>(null);
+  const [lessons, setLessons] = useState<LessonSummary[]>([]);
+  const [lessonLoadError, setLessonLoadError] = useState<string | null>(null);
+  const [loadingLesson, setLoadingLesson] = useState(true);
+  const [lessonMode, setLessonMode] = useState<"today" | "review">("today");
   const [stats, setStats] = useState<StudentStats | null>(null);
   const [pageIndex, setPageIndex] = useState(0);
   const [autoMode, setAutoMode] = useState(false);
@@ -102,10 +126,51 @@ function App() {
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => {
-    getTodayLesson()
-      .then(setLesson)
-      .catch((error) => setMessage(error.message));
+    void loadTodayLesson();
+    void refreshLessonList();
   }, []);
+
+  async function refreshLessonList() {
+    try {
+      setLessons(await listLessons());
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "复习列表加载失败");
+    }
+  }
+
+  async function loadTodayLesson() {
+    setLoadingLesson(true);
+    setLessonLoadError(null);
+    try {
+      const todayLesson = await getTodayLesson();
+      setLesson(todayLesson);
+      setLessonMode("today");
+      setPageIndex(0);
+      setCheckinReward(null);
+    } catch (error) {
+      setLesson(null);
+      setLessonLoadError(error instanceof Error ? error.message : "今天的课程加载失败");
+    } finally {
+      setLoadingLesson(false);
+    }
+  }
+
+  async function loadReviewLesson(date: string) {
+    setLoadingLesson(true);
+    setLessonLoadError(null);
+    setMessage(null);
+    try {
+      const reviewLesson = await getLessonByDate(date);
+      setLesson(reviewLesson);
+      setLessonMode(date === todayKey ? "today" : "review");
+      setPageIndex(0);
+      setCheckinReward(null);
+    } catch (error) {
+      setLessonLoadError(error instanceof Error ? error.message : "复习课程加载失败");
+    } finally {
+      setLoadingLesson(false);
+    }
+  }
 
   useEffect(() => {
     if (identity?.mode === "student") {
@@ -124,11 +189,12 @@ function App() {
     if (!stats) return [];
     return buildCalendarDays(stats.campaignStartDate, stats.campaignEndDate);
   }, [stats]);
+  const isTodayLesson = lesson?.date === todayKey;
   const shareDay = Math.max((stats?.totalCheckins ?? 0) + (stats?.completedToday ? 0 : 1), 1);
   const shareDayText = formatCheckinDay(shareDay);
   const studentName = identity?.mode === "student" ? identity.student.displayName : "小朋友";
   const shareText = `我是京师幼学蓝湾幼儿园小朋友 ${studentName}，👊👊挑战英文助力打卡第${shareDayText}天。说出口，刷到爆，连续打卡最闪耀！ Love English, From JSYX！🌟`;
-  const finishedToday = Boolean(stats?.completedToday);
+  const finishedCurrentLesson = Boolean(lesson && checkedDateSet.has(lesson.date));
   const rewardMessage = checkinReward ?? stats?.latestRewardText ?? "今天的英语打卡完成啦！";
 
   useEffect(() => {
@@ -260,7 +326,18 @@ function App() {
   if (!lesson) {
     return (
       <main className="shell centered">
-        <div className="loading-card">正在准备今天的英语小任务...</div>
+        <div className="loading-card">
+          {loadingLesson ? (
+            "正在准备今天的英语小任务..."
+          ) : (
+            <>
+              <strong>{lessonLoadError ?? "课程还没有准备好"}</strong>
+              <button type="button" onClick={() => void loadTodayLesson()}>
+                重新加载
+              </button>
+            </>
+          )}
+        </div>
       </main>
     );
   }
@@ -296,12 +373,44 @@ function App() {
 
           <section className="topbar" aria-label="学习状态">
             <div>
-              <p className="date-label">{lesson.title}</p>
+              <p className="date-label">
+                {lessonMode === "today" ? "今日课程" : "复习课程"} · {formatLessonDate(lesson.date)}
+              </p>
               <strong>{identity?.mode === "student" ? `${identity.student.displayName}，开始吧` : "实验小一班英语点读"}</strong>
             </div>
             <div className="stats-pill">
               <Flower2 aria-hidden />
               <span>{stats ? `${stats.totalCheckins} 天` : "7 月挑战"}</span>
+            </div>
+          </section>
+
+          <section className="lesson-tabs" aria-label="课程切换">
+            <button
+              type="button"
+              className={lessonMode === "today" ? "active" : ""}
+              disabled={loadingLesson}
+              onClick={() => void loadTodayLesson()}
+            >
+              <Play size={18} />
+              今天
+            </button>
+            <div className="review-picker">
+              <CalendarDays size={18} aria-hidden />
+              <select
+                value={lesson.date}
+                disabled={loadingLesson || lessons.length === 0}
+                onChange={(event) => void loadReviewLesson(event.target.value)}
+              >
+                {lessons.length === 0 ? (
+                  <option value={lesson.date}>暂无复习课</option>
+                ) : (
+                  lessons.map((item) => (
+                    <option key={item.id} value={item.date}>
+                      {formatLessonDate(item.date)} · {item.pageCount} 页
+                    </option>
+                  ))
+                )}
+              </select>
             </div>
           </section>
 
@@ -373,7 +482,7 @@ function App() {
               <section className="finish-panel">
                 {identity.mode === "guest" ? (
                   <p>游客模式可以点读体验。输入本班姓名或学号后，就能正式打卡。</p>
-                ) : finishedToday ? (
+                ) : finishedCurrentLesson ? (
                   <div className="reward">
                     <img src="/jsyx-smile.png" alt="" />
                     <span className="reward-badge">完成第 {formatCheckinDay(stats?.totalCheckins ?? shareDay)} 天打卡</span>
@@ -389,7 +498,13 @@ function App() {
                   <div className="finish-cta">
                     <button className="finish-button" onClick={() => void completeCheckin()} disabled={!isLastPage || loading}>
                       <Sparkles />
-                      {isLastPage ? (loading ? "打卡中..." : "完成今日打卡") : "翻到最后一页即可打卡"}
+                      {isLastPage
+                        ? loading
+                          ? "打卡中..."
+                          : isTodayLesson
+                            ? "完成今日打卡"
+                            : "完成复习打卡"
+                        : "翻到最后一页即可打卡"}
                     </button>
                     <p>只要完成最后一页，就可以打卡。</p>
                   </div>

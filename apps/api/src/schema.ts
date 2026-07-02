@@ -68,6 +68,14 @@ export async function seedDemoData() {
     on conflict (student_id) do nothing;
   `);
 
+  const published = await query<{ count: string }>(
+    "select count(*)::text as count from lessons where status = 'published'"
+  );
+
+  if (Number(published.rows[0]?.count ?? 0) > 0) {
+    return;
+  }
+
   const lesson = await query<{ id: string }>(
     `
       insert into lessons (lesson_date, title, status)

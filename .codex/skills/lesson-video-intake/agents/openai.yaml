@@ -1,0 +1,7 @@
+interface:
+  display_name: "Lesson Video Intake"
+  short_description: "处理老师视频并生成课程素材草稿"
+  default_prompt: "Use $lesson-video-intake to process /absolute/path/to/video.mp4 for 2026-07-03 and optionally import locally or publish remotely."
+
+policy:
+  allow_implicit_invocation: true

@@ -1,4 +1,4 @@
-import type { Checkin, IdentityResponse, Lesson, StudentStats } from "@kindergarten-english/shared";
+import type { Checkin, IdentityResponse, Lesson, LessonSummary, StudentStats } from "@kindergarten-english/shared";
 
 const API_BASE =
   import.meta.env.VITE_API_BASE_URL ??
@@ -33,6 +33,14 @@ export async function identify(identifier: string) {
 
 export async function getTodayLesson() {
   return request<Lesson>("/api/lessons/today");
+}
+
+export async function listLessons() {
+  return request<LessonSummary[]>("/api/lessons");
+}
+
+export async function getLessonByDate(date: string) {
+  return request<Lesson>(`/api/lessons/${date}`);
 }
 
 export async function createCheckin(params: {

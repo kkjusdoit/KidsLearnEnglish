@@ -65,8 +65,26 @@ button:disabled {
 }
 
 .loading-card {
+  display: grid;
+  justify-items: center;
+  gap: 14px;
   padding: 28px;
   color: var(--muted);
+  text-align: center;
+}
+
+.loading-card strong {
+  color: var(--ink);
+  font-size: 1.1rem;
+}
+
+.loading-card button {
+  min-height: 46px;
+  padding: 0 16px;
+  color: white;
+  background: var(--primary);
+  border-radius: 12px;
+  font-weight: 900;
 }
 
 .topbar {
@@ -159,6 +177,50 @@ button:disabled {
   border-radius: 999px;
   font-weight: 800;
   white-space: nowrap;
+}
+
+.lesson-tabs {
+  display: grid;
+  grid-template-columns: minmax(104px, auto) 1fr;
+  gap: 10px;
+  margin: -4px 0 16px;
+}
+
+.lesson-tabs button,
+.review-picker {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 50px;
+  color: var(--primary-strong);
+  background: oklch(0.94 0.036 225);
+  border: 1px solid oklch(0.88 0.04 225);
+  border-radius: 14px;
+  font-weight: 900;
+}
+
+.lesson-tabs button.active {
+  color: white;
+  background: var(--primary);
+}
+
+.review-picker {
+  justify-content: flex-start;
+  padding: 0 12px;
+  overflow: hidden;
+}
+
+.review-picker select {
+  width: 100%;
+  min-width: 0;
+  min-height: 48px;
+  color: var(--primary-strong);
+  background: transparent;
+  border: 0;
+  outline: 0;
+  font: inherit;
+  font-weight: 900;
 }
 
 .identify-panel {
@@ -844,6 +906,10 @@ button:disabled {
 
   .topbar {
     min-height: 54px;
+  }
+
+  .lesson-tabs {
+    grid-template-columns: 1fr;
   }
 
   .brand-strip {

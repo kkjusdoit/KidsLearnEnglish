@@ -16,6 +16,14 @@ export type Lesson = {
   pages: LessonPage[];
 };
 
+export type LessonSummary = {
+  id: string;
+  date: string;
+  title: string;
+  status: LessonStatus;
+  pageCount: number;
+};
+
 export type LessonPageType = "word" | "sentence";
 
 export type LessonPage = {

@@ -52,17 +52,21 @@ npm run media:import -w @kindergarten-english/api -- /abs/path/to/lesson-dir 202
 
 ### 1. 你每天会用到的工具
 
-- `ffmpeg`
+- `ffmpeg`：`/opt/homebrew/bin/ffmpeg`
   - 用途：从老师视频里抽音频、抽封面、半自动切分音频
-- 本地人工处理工具 thread：`codex://threads/019f1e2a-8b16-7491-a241-b797370e70d5`
-  - 用途：人工校正每页图片和音频，尤其适合单词挨得很近、自动裁图不理想的时候
-- 仓库脚本 `npm run media:process -w @kindergarten-english/api`
+- `ffprobe`：`/opt/homebrew/bin/ffprobe`
+  - 用途：辅助音频分析和时长检查
+- 半自动音频/图片处理脚本：`/Users/linkunkun/Documents/Codex/2026-07-01/zhe/apps/api/scripts/process-media.ts`
   - 用途：先给出一版半自动音频切段和图片切块草稿
-- 仓库脚本 `npm run media:import -w @kindergarten-english/api`
+- 视频分析脚本：`/Users/linkunkun/Documents/Codex/2026-07-01/zhe/apps/api/scripts/analyze-media.ts`
+  - 用途：分析老师视频里的语音分段
+- 导入脚本：`/Users/linkunkun/Documents/Codex/2026-07-01/zhe/apps/api/scripts/import-lesson-media.ts`
   - 用途：把你已经确认好的 `page-1.jpg / page-1.mp3 / words.txt` 导入到网站数据
-- 后端部署脚本 `infra/deploy-gce.sh`
+- 音视频工具函数：`/Users/linkunkun/Documents/Codex/2026-07-01/zhe/apps/api/scripts/media-utils.ts`
+  - 用途：`process-media.ts` / `analyze-media.ts` 底层会调用这里的 FFmpeg 逻辑
+- 后端部署脚本：`/Users/linkunkun/Documents/Codex/2026-07-01/zhe/infra/deploy-gce.sh`
   - 用途：把当天课程素材和后端同步到线上 GCE
-- 前端直发脚本 `infra/deploy-pages-direct.mjs`
+- 前端直发脚本：`/Users/linkunkun/Documents/Codex/2026-07-01/zhe/infra/deploy-pages-direct.mjs`
   - 用途：只有页面代码改动时，才需要发 Pages
 
 ### 2. 准备一个当天素材目录
@@ -107,8 +111,8 @@ words.txt
 做法：
 
 1. 把原始 `lesson.mp4` 放进当天目录
-2. 打开本地人工处理工具 thread：`codex://threads/019f1e2a-8b16-7491-a241-b797370e70d5`
-3. 让它按页导出：
+2. 用你本地已有的人工工具，把视频手工导出成按页素材目录
+3. 导出结果至少要有：
    - `page-1.jpg`
    - `page-1.mp3`
    - `page-2.jpg`
@@ -123,6 +127,13 @@ words.txt
 
 ```bash
 npm run media:process -w @kindergarten-english/api -- /abs/path/to/lesson.mp4 2026-07-03 /abs/path/to/output-dir --words crayon,paper,pencil,scissors,backpack,book
+```
+
+等价到底层工具就是：
+
+```bash
+/opt/homebrew/bin/ffmpeg
+/Users/linkunkun/Documents/Codex/2026-07-01/zhe/apps/api/scripts/process-media.ts
 ```
 
 这个脚本会自动生成一版：

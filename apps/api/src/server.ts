@@ -54,6 +54,61 @@ function toLesson(row: {
   };
 }
 
+async function getPublishedLessonByDate(date: string) {
+  const lessons = await query<{
+    id: string;
+    lesson_date: string;
+    title: string;
+    status: "draft" | "published";
+  }>(
+    `
+      select id, lesson_date::text, title, status
+      from lessons
+      where lesson_date = $1::date and status = 'published'
+      limit 1
+    `,
+    [date]
+  );
+
+  const lesson = lessons.rows[0];
+  if (!lesson) return null;
+
+  const pages = await query<{
+    id: string;
+    lesson_id: string;
+    page_order: number;
+    page_type: "word" | "sentence";
+    text: string;
+    audio_url: string;
+    image_url: string | null;
+    start_ms: number | null;
+    end_ms: number | null;
+  }>(
+    `
+      select id, lesson_id, page_order, page_type, text, audio_url, image_url, start_ms, end_ms
+      from lesson_pages
+      where lesson_id = $1
+      order by page_order asc
+    `,
+    [lesson.id]
+  );
+
+  return {
+    ...toLesson(lesson),
+    pages: pages.rows.map((page) => ({
+      id: page.id,
+      lessonId: page.lesson_id,
+      order: page.page_order,
+      type: page.page_type,
+      text: page.text,
+      audioUrl: page.audio_url,
+      imageUrl: page.image_url,
+      startMs: page.start_ms,
+      endMs: page.end_ms
+    }))
+  };
+}
+
 function multipartFieldValue(field: unknown) {
   if (!field || Array.isArray(field)) return "";
   if (typeof field === "object" && "value" in field) {
@@ -436,60 +491,54 @@ export async function buildServer() {
     };
   });
 
-  app.get("/api/lessons/today", async (_request, reply) => {
+  app.get("/api/lessons", async () => {
     const lessons = await query<{
       id: string;
       lesson_date: string;
       title: string;
       status: "draft" | "published";
+      page_count: number;
     }>(
       `
-        select id, lesson_date::text, title, status
+        select
+          l.id,
+          l.lesson_date::text,
+          l.title,
+          l.status,
+          count(lp.id)::int as page_count
         from lessons
-        where lesson_date = current_date and status = 'published'
-        limit 1
+        l
+        left join lesson_pages lp on lp.lesson_id = l.id
+        where l.status = 'published'
+        group by l.id, l.lesson_date, l.title, l.status
+        order by l.lesson_date desc
+        limit 60
       `
     );
 
-    const lesson = lessons.rows[0];
+    return lessons.rows.map((lesson) => ({
+      ...toLesson(lesson),
+      pageCount: lesson.page_count
+    }));
+  });
+
+  app.get("/api/lessons/today", async (_request, reply) => {
+    const lesson = await getPublishedLessonByDate(dateKeyInShanghai());
     if (!lesson) {
       return reply.code(404).send({ error: "今天的课程还没有发布" });
     }
+    return lesson;
+  });
 
-    const pages = await query<{
-      id: string;
-      lesson_id: string;
-      page_order: number;
-      page_type: "word" | "sentence";
-      text: string;
-      audio_url: string;
-      image_url: string | null;
-      start_ms: number | null;
-      end_ms: number | null;
-    }>(
-      `
-        select id, lesson_id, page_order, page_type, text, audio_url, image_url, start_ms, end_ms
-        from lesson_pages
-        where lesson_id = $1
-        order by page_order asc
-      `,
-      [lesson.id]
-    );
+  app.get("/api/lessons/:date", async (request, reply) => {
+    const parsed = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).safeParse((request.params as { date: string }).date);
+    if (!parsed.success) return reply.code(400).send({ error: "课程日期不正确" });
 
-    return {
-      ...toLesson(lesson),
-      pages: pages.rows.map((page) => ({
-        id: page.id,
-        lessonId: page.lesson_id,
-        order: page.page_order,
-        type: page.page_type,
-        text: page.text,
-        audioUrl: page.audio_url,
-        imageUrl: page.image_url,
-        startMs: page.start_ms,
-        endMs: page.end_ms
-      }))
-    };
+    const lesson = await getPublishedLessonByDate(parsed.data);
+    if (!lesson) {
+      return reply.code(404).send({ error: "这一天还没有发布课程" });
+    }
+    return lesson;
   });
 
   app.post("/api/recordings", async (request, reply) => {

@@ -39,8 +39,50 @@ npm run dev -w @kindergarten-english/web
 
 用 FFmpeg 从老师视频里抽取静音分段：
 
+- `ffmpeg`: `/opt/homebrew/bin/ffmpeg`
+- `ffprobe`: `/opt/homebrew/bin/ffprobe`
+- 半自动处理脚本: `/Users/linkunkun/Documents/Codex/2026-07-01/zhe/apps/api/scripts/process-media.ts`
+- 分析脚本: `/Users/linkunkun/Documents/Codex/2026-07-01/zhe/apps/api/scripts/analyze-media.ts`
+- 项目内 skill: `/Users/linkunkun/Documents/Codex/2026-07-01/zhe/.codex/skills/lesson-video-intake`
+
 ```bash
 npm run media:analyze -w @kindergarten-english/api -- /path/to/video.mp4
+```
+
+如果想直接“给一个 video 就开始处理”，优先用这个 skill：
+
+```bash
+bash /Users/linkunkun/Documents/Codex/2026-07-01/zhe/.codex/skills/lesson-video-intake/scripts/process-lesson-video.sh \
+  /absolute/path/to/video.mp4 \
+  2026-07-03 \
+  --words crayon,paper,pencil,scissors,backpack,book
+```
+
+这里的 `2026-07-03` 不是装饰字段，而是整条链路的课程日期。它会同时用于：
+
+- 输出目录命名
+- 草稿素材日期
+- 后续导入命令
+- 服务器上的当天课程日期
+
+如果你想让它在处理完成后，直接导入到本地课程数据，再加一个 `--import`：
+
+```bash
+bash /Users/linkunkun/Documents/Codex/2026-07-01/zhe/.codex/skills/lesson-video-intake/scripts/process-lesson-video.sh \
+  /absolute/path/to/video.mp4 \
+  2026-07-03 \
+  --words crayon,paper,pencil,scissors,backpack,book \
+  --import
+```
+
+如果你想让它在处理完成后，直接把这一天的课程发布到远端服务器，再加一个 `--deploy-remote`：
+
+```bash
+bash /Users/linkunkun/Documents/Codex/2026-07-01/zhe/.codex/skills/lesson-video-intake/scripts/process-lesson-video.sh \
+  /absolute/path/to/video.mp4 \
+  2026-07-03 \
+  --words crayon,paper,pencil,scissors,backpack,book \
+  --deploy-remote
 ```
 
 脚本会输出建议的 `LessonPage` JSON 片段，发布前需要人工校对每页文本和音频。
@@ -79,6 +121,10 @@ npm run media:import -w @kindergarten-english/api -- /abs/path/to/my-lesson 2026
 - 复制素材到 `apps/api/storage/uploads/<date>/`
 - upsert 当天 `lessons`
 - 替换当天 `lesson_pages`
+
+导入脚本绝对路径：
+
+- `/Users/linkunkun/Documents/Codex/2026-07-01/zhe/apps/api/scripts/import-lesson-media.ts`
 
 ## 部署
 
