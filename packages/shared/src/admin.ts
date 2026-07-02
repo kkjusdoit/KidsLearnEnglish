@@ -12,6 +12,9 @@ export type AdminStudent = {
   name: string;
   displayName: string;
   active: boolean;
+  carryCheckinDays: number;
+  historicalCheckinsConfirmed: boolean;
+  totalCheckinDays: number;
 };
 
 export type AdminLessonPage = {

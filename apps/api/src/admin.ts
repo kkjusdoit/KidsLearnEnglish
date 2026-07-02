@@ -10,6 +10,7 @@ export const studentUpsertSchema = z.object({
   studentId: z.string().trim().min(1).max(40),
   name: z.string().trim().min(1).max(80),
   displayName: z.string().trim().min(1).max(80),
+  carryCheckinDays: z.number().int().min(0).max(365).optional(),
   active: z.boolean().optional().default(true)
 });
 
@@ -32,7 +33,25 @@ export const lessonPageUpsertSchema = z.object({
 export async function getAdminDashboard() {
   const [students, lessons, checkins] = await Promise.all([
     query(
-      "select id, student_id, name, display_name, active from students order by created_at desc"
+      `
+        select
+          s.id,
+          s.student_id,
+          s.name,
+          s.display_name,
+          s.active,
+          s.carry_checkin_days,
+          s.historical_checkins_confirmed_at::text as historical_checkins_confirmed_at,
+          count(sc.id)::int as total_checkin_days
+        from students s
+        left join student_checkin_days sc
+          on sc.student_id = s.id
+          and sc.checked = true
+        group by s.id
+        order by
+          case when s.student_id ~ '^[0-9]+$' then s.student_id::int end nulls last,
+          s.student_id asc
+      `
     ),
     query(
       `
@@ -63,7 +82,10 @@ export async function getAdminDashboard() {
       studentId: row.student_id,
       name: row.name,
       displayName: row.display_name,
-      active: row.active
+      active: row.active,
+      carryCheckinDays: row.carry_checkin_days,
+      historicalCheckinsConfirmed: Boolean(row.historical_checkins_confirmed_at),
+      totalCheckinDays: row.total_checkin_days
     })),
     lessons: lessons.rows.map((row) => ({
       id: row.id,

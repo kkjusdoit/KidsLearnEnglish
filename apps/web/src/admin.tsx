@@ -49,7 +49,12 @@ export function AdminPanel() {
   const [bootstrapToken, setBootstrapToken] = useState<string | null>(null);
   const [dashboard, setDashboard] = useState<AdminDashboard | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [studentForm, setStudentForm] = useState({ studentId: "", name: "", displayName: "" });
+  const [studentForm, setStudentForm] = useState({
+    studentId: "",
+    name: "",
+    displayName: "",
+    carryCheckinDays: ""
+  });
   const [lessonForm, setLessonForm] = useState<{ date: string; title: string; status: "draft" | "published" }>({
     date: "",
     title: "",
@@ -98,12 +103,18 @@ export function AdminPanel() {
 
   async function saveStudent() {
     setError(null);
+    const carryCheckinDays = studentForm.carryCheckinDays.trim();
     await adminRequest("/api/admin/students", token, {
       method: "POST",
-      body: JSON.stringify(studentForm)
+      body: JSON.stringify({
+        studentId: studentForm.studentId,
+        name: studentForm.name,
+        displayName: studentForm.displayName,
+        ...(carryCheckinDays ? { carryCheckinDays: Number(carryCheckinDays) } : {})
+      })
     });
     await refresh(token);
-    setStudentForm({ studentId: "", name: "", displayName: "" });
+    setStudentForm({ studentId: "", name: "", displayName: "", carryCheckinDays: "" });
   }
 
   async function saveLesson() {
@@ -146,14 +157,26 @@ export function AdminPanel() {
           <input placeholder="学号" value={studentForm.studentId} onChange={(e) => setStudentForm((s) => ({ ...s, studentId: e.target.value }))} />
           <input placeholder="姓名" value={studentForm.name} onChange={(e) => setStudentForm((s) => ({ ...s, name: e.target.value }))} />
           <input placeholder="显示名" value={studentForm.displayName} onChange={(e) => setStudentForm((s) => ({ ...s, displayName: e.target.value }))} />
+          <input
+            type="number"
+            min="0"
+            placeholder="补录打卡天数"
+            value={studentForm.carryCheckinDays}
+            onChange={(e) => setStudentForm((s) => ({ ...s, carryCheckinDays: e.target.value }))}
+          />
           <button type="button" onClick={saveStudent}>保存学生</button>
         </div>
         <div className="admin-table">
+          <div className="admin-row admin-row-head">
+            <span>学号</span>
+            <span>姓名</span>
+            <span>打卡天数</span>
+          </div>
           {dashboard?.students.map((student: AdminStudent) => (
             <div key={student.id} className="admin-row">
               <span>{student.studentId}</span>
               <span>{student.name}</span>
-              <span>{student.active ? "启用" : "停用"}</span>
+              <span>{student.totalCheckinDays} 天</span>
             </div>
           ))}
         </div>

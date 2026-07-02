@@ -31,6 +31,15 @@ const checkinSchema = z.object({
   pageCount: z.number().int().positive()
 });
 
+const checkinDaySchema = z.object({
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  checked: z.boolean()
+});
+
+const historicalCheckinsSchema = z.object({
+  carryCheckinDays: z.number().int().min(0).max(365)
+});
+
 function toLesson(row: {
   id: string;
   lesson_date: string;
@@ -59,6 +68,77 @@ const rewards = [
   "你完成了今天的英语小任务，真棒！",
   "又多学会一点点，明天也来闯关吧！"
 ];
+
+const campaignStartDate = "2026-06-29";
+const campaignEndDate = "2026-07-31";
+
+function dateKeyInShanghai(date = new Date()) {
+  const formatter = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Shanghai",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  });
+  const parts = formatter.formatToParts(date);
+  const year = parts.find((part) => part.type === "year")?.value ?? "0000";
+  const month = parts.find((part) => part.type === "month")?.value ?? "00";
+  const day = parts.find((part) => part.type === "day")?.value ?? "00";
+  return `${year}-${month}-${day}`;
+}
+
+function shiftDateKey(dateKey: string, days: number) {
+  const date = new Date(`${dateKey}T12:00:00+08:00`);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
+async function getStudentStats(studentId: string) {
+  const [checkedRows, rewardRow] = await Promise.all([
+    query<{ checkin_date: string }>(
+      `
+        select checkin_date::text as checkin_date
+        from student_checkin_days
+        where student_id = $1
+          and checked = true
+          and checkin_date between $2::date and $3::date
+        order by checkin_date asc
+      `,
+      [studentId, campaignStartDate, campaignEndDate]
+    ),
+    query<{ reward_text: string }>(
+      `
+        select reward_text
+        from checkins
+        where student_id = $1
+        order by completed_at desc
+        limit 1
+      `,
+      [studentId]
+    )
+  ]);
+
+  const checkedDates = checkedRows.rows.map((row) => row.checkin_date);
+  const checkedDateSet = new Set(checkedDates);
+  const todayKey = dateKeyInShanghai();
+  const streakStart = todayKey > campaignEndDate ? campaignEndDate : todayKey;
+  let streakDays = 0;
+  let cursor = streakStart;
+
+  while (cursor >= campaignStartDate && checkedDateSet.has(cursor)) {
+    streakDays += 1;
+    cursor = shiftDateKey(cursor, -1);
+  }
+
+  return {
+    totalCheckins: checkedDates.length,
+    streakDays,
+    completedToday: checkedDateSet.has(todayKey),
+    checkedDates,
+    campaignStartDate,
+    campaignEndDate,
+    latestRewardText: rewardRow.rows[0]?.reward_text
+  };
+}
 
 export async function buildServer() {
   const app = Fastify({ logger: true });
@@ -134,21 +214,88 @@ export async function buildServer() {
 
     const inserted = await query(
       `
-        insert into students (student_id, name, display_name, active)
-        values ($1, $2, $3, $4)
+        insert into students (
+          student_id,
+          name,
+          display_name,
+          active,
+          carry_checkin_days,
+          historical_checkins_confirmed_at
+        )
+        values ($1, $2, $3, $4, coalesce($5, 0), case when $5 is null then null else now() end)
         on conflict (student_id)
-        do update set name = excluded.name, display_name = excluded.display_name, active = excluded.active
-        returning id, student_id, name, display_name, active
+        do update set
+          name = excluded.name,
+          display_name = excluded.display_name,
+          active = excluded.active,
+          carry_checkin_days = case
+            when $5 is null then students.carry_checkin_days
+            else excluded.carry_checkin_days
+          end,
+          historical_checkins_confirmed_at = case
+            when $5 is null then students.historical_checkins_confirmed_at
+            else now()
+          end
+        returning
+          id,
+          student_id,
+          name,
+          display_name,
+          active,
+          carry_checkin_days,
+          historical_checkins_confirmed_at::text as historical_checkins_confirmed_at
       `,
       [
         parsed.data.studentId,
         parsed.data.name,
         parsed.data.displayName,
-        parsed.data.active
+        parsed.data.active,
+        parsed.data.carryCheckinDays ?? null
       ]
     );
 
-    return inserted.rows[0];
+    const row = inserted.rows[0];
+    if (row && parsed.data.carryCheckinDays !== undefined) {
+      await query(
+        `
+          delete from student_checkin_days
+          where student_id = $1
+            and source = 'manual'
+            and checkin_date between $2::date and $3::date
+        `,
+        [row.id, campaignStartDate, campaignEndDate]
+      );
+
+      if (parsed.data.carryCheckinDays > 0) {
+        await query(
+          `
+            insert into student_checkin_days (student_id, checkin_date, checked, source)
+            select
+              $1,
+              generated.checkin_date,
+              true,
+              'manual'
+            from (
+              select ($2::date + offset_days) as checkin_date
+              from generate_series(0, $3 - 1) as offset_days
+            ) generated
+            on conflict (student_id, checkin_date)
+            do update set checked = true, source = 'manual'
+          `,
+          [row.id, campaignStartDate, parsed.data.carryCheckinDays]
+        );
+      }
+    }
+
+    return {
+      id: row.id,
+      studentId: row.student_id,
+      name: row.name,
+      displayName: row.display_name,
+      active: row.active,
+      carryCheckinDays: row.carry_checkin_days,
+      historicalCheckinsConfirmed: Boolean(row.historical_checkins_confirmed_at)
+    };
   });
 
   app.post("/api/admin/lessons", async (request, reply) => {
@@ -401,6 +548,20 @@ export async function buildServer() {
     if (!parsed.success) return reply.code(400).send({ error: "打卡参数不正确" });
 
     const rewardText = rewards[Math.floor(Math.random() * rewards.length)];
+    const lesson = await query<{ lesson_date: string }>(
+      `
+        select lesson_date::text as lesson_date
+        from lessons
+        where id = $1
+        limit 1
+      `,
+      [parsed.data.lessonId]
+    );
+
+    if (!lesson.rows[0]) {
+      return reply.code(404).send({ error: "课程不存在" });
+    }
+
     const inserted = await query<{
       id: string;
       completed_at: string;
@@ -417,6 +578,16 @@ export async function buildServer() {
       [auth.studentUuid, parsed.data.lessonId, parsed.data.pageCount, rewardText]
     );
 
+    await query(
+      `
+        insert into student_checkin_days (student_id, checkin_date, checked, source)
+        values ($1, $2, true, 'lesson')
+        on conflict (student_id, checkin_date)
+        do update set checked = true, source = 'lesson'
+      `,
+      [auth.studentUuid, lesson.rows[0].lesson_date]
+    );
+
     return {
       id: inserted.rows[0].id,
       studentId: auth.studentUuid,
@@ -427,41 +598,127 @@ export async function buildServer() {
     };
   });
 
+  app.post("/api/students/me/checkin-days", async (request, reply) => {
+    const auth = verifyAuthHeader(request.headers.authorization);
+    if (auth.mode !== "student") {
+      return reply.code(403).send({ error: "游客不能修改打卡日历" });
+    }
+
+    const parsed = checkinDaySchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ error: "打卡日期参数不正确" });
+    }
+
+    const todayKey = dateKeyInShanghai();
+    if (parsed.data.date < campaignStartDate || parsed.data.date > campaignEndDate) {
+      return reply.code(400).send({ error: "只能修改活动期间内的日期" });
+    }
+    if (parsed.data.date >= todayKey) {
+      return reply.code(400).send({ error: "只能修改过去的日期" });
+    }
+
+    await query(
+      `
+        insert into student_checkin_days (student_id, checkin_date, checked, source)
+        values ($1, $2, $3, 'manual')
+        on conflict (student_id, checkin_date)
+        do update set checked = excluded.checked, source = 'manual'
+      `,
+      [auth.studentUuid, parsed.data.date, parsed.data.checked]
+    );
+
+    return getStudentStats(auth.studentUuid);
+  });
+
+  app.post("/api/students/me/historical-checkins", async (request, reply) => {
+    const auth = verifyAuthHeader(request.headers.authorization);
+    if (auth.mode !== "student") {
+      return reply.code(403).send({ error: "游客不能确认历史打卡" });
+    }
+
+    const parsed = historicalCheckinsSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ error: "历史打卡天数不正确" });
+    }
+
+    const updated = await query<{
+      carry_checkin_days: number;
+      historical_checkins_confirmed_at: string;
+    }>(
+      `
+        update students
+        set
+          carry_checkin_days = $2,
+          historical_checkins_confirmed_at = now()
+        where id = $1
+        returning
+          carry_checkin_days,
+          historical_checkins_confirmed_at::text as historical_checkins_confirmed_at
+      `,
+      [auth.studentUuid, parsed.data.carryCheckinDays]
+    );
+
+    if (!updated.rows[0]) {
+      return reply.code(404).send({ error: "学生不存在" });
+    }
+
+    await query(
+      `
+        delete from student_checkin_days
+        where student_id = $1
+          and source = 'manual'
+          and checkin_date between $2::date and $3::date
+      `,
+      [auth.studentUuid, campaignStartDate, campaignEndDate]
+    );
+
+    if (parsed.data.carryCheckinDays > 0) {
+      await query(
+        `
+          insert into student_checkin_days (student_id, checkin_date, checked, source)
+          select
+            $1,
+            generated.checkin_date,
+            true,
+            'manual'
+          from (
+            select ($2::date + offset_days) as checkin_date
+            from generate_series(0, $3 - 1) as offset_days
+          ) generated
+          on conflict (student_id, checkin_date)
+          do update set checked = true, source = 'manual'
+        `,
+        [auth.studentUuid, campaignStartDate, parsed.data.carryCheckinDays]
+      );
+    }
+
+    return {
+      carryCheckinDays: updated.rows[0].carry_checkin_days,
+      historicalCheckinsConfirmed: Boolean(updated.rows[0].historical_checkins_confirmed_at)
+    };
+  });
+
   app.get("/api/students/me/stats", async (request, reply) => {
     const auth = verifyAuthHeader(request.headers.authorization);
     if (auth.mode !== "student") {
       return reply.code(403).send({ error: "游客没有个人统计" });
     }
 
-    const rows = await query<{
-      completed_day: string;
-      reward_text: string;
-    }>(
+    const student = await query<{ id: string }>(
       `
-        select completed_at::date::text as completed_day, reward_text
-        from checkins
-        where student_id = $1
-        order by completed_day desc
+        select id
+        from students
+        where id = $1
+        limit 1
       `,
       [auth.studentUuid]
     );
 
-    const days = new Set(rows.rows.map((row) => row.completed_day));
-    let streakDays = 0;
-    const cursor = new Date();
-    for (;;) {
-      const key = cursor.toISOString().slice(0, 10);
-      if (!days.has(key)) break;
-      streakDays += 1;
-      cursor.setDate(cursor.getDate() - 1);
+    if (!student.rows[0]) {
+      return reply.code(404).send({ error: "学生不存在" });
     }
 
-    return {
-      totalCheckins: days.size,
-      streakDays,
-      completedToday: days.has(new Date().toISOString().slice(0, 10)),
-      latestRewardText: rows.rows[0]?.reward_text
-    };
+    return getStudentStats(auth.studentUuid);
   });
 
   app.post("/api/admin/cleanup-recordings", async (_request, reply) => {

@@ -1,53 +1,20 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { FormEvent } from "react";
-import { ArrowLeft, ArrowRight, Flower2, Mic, Pause, Play, RotateCcw, Sparkles, UserRound } from "lucide-react";
-import type { IdentityResponse, Lesson, Recording, StudentStats } from "@kindergarten-english/shared";
-import { createCheckin, getStats, getTodayLesson, identify, mediaUrl, uploadRecording } from "./api";
+import {
+  ArrowLeft,
+  ArrowRight,
+  Copy,
+  Flower2,
+  Pause,
+  PencilLine,
+  Play,
+  RotateCcw,
+  Sparkles,
+  UserRound
+} from "lucide-react";
+import type { IdentityResponse, Lesson, StudentStats } from "@kindergarten-english/shared";
+import { createCheckin, getStats, getTodayLesson, identify, mediaUrl, updateCheckinDay } from "./api";
 import { AdminPanel } from "./admin";
-
-type PageState = "idle" | "played" | "recorded";
-
-function useRecorder() {
-  const mediaRecorder = useRef<MediaRecorder | null>(null);
-  const chunks = useRef<Blob[]>([]);
-  const [isRecording, setIsRecording] = useState(false);
-  const [blob, setBlob] = useState<Blob | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  async function start() {
-    setError(null);
-    setBlob(null);
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      chunks.current = [];
-      const recorder = new MediaRecorder(stream);
-      mediaRecorder.current = recorder;
-      recorder.ondataavailable = (event) => {
-        if (event.data.size > 0) chunks.current.push(event.data);
-      };
-      recorder.onstop = () => {
-        stream.getTracks().forEach((track) => track.stop());
-        setBlob(new Blob(chunks.current, { type: recorder.mimeType || "audio/webm" }));
-        setIsRecording(false);
-      };
-      recorder.start();
-      setIsRecording(true);
-    } catch {
-      setError("没有拿到麦克风权限，可以先听读，再请家长帮忙打开权限。");
-    }
-  }
-
-  function stop() {
-    mediaRecorder.current?.stop();
-  }
-
-  function reset() {
-    setBlob(null);
-    setError(null);
-  }
-
-  return { blob, error, isRecording, start, stop, reset };
-}
 
 function FitText({ text, type }: { text: string; type: "word" | "sentence" }) {
   const length = text.length;
@@ -67,23 +34,72 @@ function FitText({ text, type }: { text: string; type: "word" | "sentence" }) {
   );
 }
 
+function formatCheckinDay(day: number) {
+  const keycapDigits: Record<string, string> = {
+    "0": "0️⃣",
+    "1": "1️⃣",
+    "2": "2️⃣",
+    "3": "3️⃣",
+    "4": "4️⃣",
+    "5": "5️⃣",
+    "6": "6️⃣",
+    "7": "7️⃣",
+    "8": "8️⃣",
+    "9": "9️⃣"
+  };
+  return String(day)
+    .split("")
+    .map((digit) => keycapDigits[digit] ?? digit)
+    .join("");
+}
+
+function dateKeyInShanghai(date = new Date()) {
+  const formatter = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Shanghai",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  });
+  const parts = formatter.formatToParts(date);
+  const year = parts.find((part) => part.type === "year")?.value ?? "0000";
+  const month = parts.find((part) => part.type === "month")?.value ?? "00";
+  const day = parts.find((part) => part.type === "day")?.value ?? "00";
+  return `${year}-${month}-${day}`;
+}
+
+function buildCalendarDays(startDate: string, endDate: string) {
+  const days: Array<{ date: string; dayNumber: string }> = [];
+  const cursor = new Date(`${startDate}T12:00:00+08:00`);
+  const end = new Date(`${endDate}T12:00:00+08:00`);
+
+  while (cursor <= end) {
+    const date = cursor.toISOString().slice(0, 10);
+    days.push({
+      date,
+      dayNumber: String(cursor.getUTCDate())
+    });
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
+  }
+
+  return days;
+}
+
 function App() {
   const [identifier, setIdentifier] = useState("");
   const [identity, setIdentity] = useState<IdentityResponse | null>(null);
   const [lesson, setLesson] = useState<Lesson | null>(null);
   const [stats, setStats] = useState<StudentStats | null>(null);
   const [pageIndex, setPageIndex] = useState(0);
-  const [pageStates, setPageStates] = useState<Record<string, PageState>>({});
-  const [recordings, setRecordings] = useState<Record<string, Recording>>({});
   const [autoMode, setAutoMode] = useState(true);
   const [isPlaying, setIsPlaying] = useState(false);
   const [checkinReward, setCheckinReward] = useState<string | null>(null);
+  const [editingCalendar, setEditingCalendar] = useState(false);
+  const [savingDate, setSavingDate] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const showAdmin = new URLSearchParams(window.location.search).get("admin") === "1";
   const [mode, setMode] = useState<"student" | "admin">(showAdmin ? "admin" : "student");
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  const recorder = useRecorder();
 
   useEffect(() => {
     getTodayLesson()
@@ -93,27 +109,35 @@ function App() {
 
   useEffect(() => {
     if (identity?.mode === "student") {
-      getStats(identity.token).then(setStats).catch(() => undefined);
+      setStats(null);
+      getStats(identity.token).then(setStats).catch((error) => setMessage(error.message));
+      return;
     }
+    setStats(null);
   }, [identity]);
 
-  useEffect(() => {
-    if (audioRef.current) {
-      audioRef.current.pause();
-      audioRef.current = null;
-      setIsPlaying(false);
-    }
-    recorder.reset();
-  }, [pageIndex]);
-
   const currentPage = lesson?.pages[pageIndex];
-  const completedPages = useMemo(
-    () => Object.values(pageStates).filter((state) => state === "recorded" || state === "played").length,
-    [pageStates]
-  );
-  const allDone = Boolean(lesson && completedPages >= lesson.pages.length);
-  const checkinDay = stats?.totalCheckins ?? 1;
+  const isLastPage = Boolean(lesson && pageIndex === lesson.pages.length - 1);
+  const checkedDateSet = useMemo(() => new Set(stats?.checkedDates ?? []), [stats?.checkedDates]);
+  const todayKey = dateKeyInShanghai();
+  const calendarDays = useMemo(() => {
+    if (!stats) return [];
+    return buildCalendarDays(stats.campaignStartDate, stats.campaignEndDate);
+  }, [stats]);
+  const shareDay = Math.max((stats?.totalCheckins ?? 0) + (stats?.completedToday ? 0 : 1), 1);
+  const shareDayText = formatCheckinDay(shareDay);
   const studentName = identity?.mode === "student" ? identity.student.displayName : "小朋友";
+  const shareText = `我是京师幼学蓝湾幼儿园小朋友 ${studentName}，👊👊挑战英文助力打卡第${shareDayText}天。说出口，刷到爆，连续打卡最闪耀！ Love English, From JSYX！🌟`;
+  const finishedToday = Boolean(stats?.completedToday);
+  const rewardMessage = checkinReward ?? stats?.latestRewardText ?? "今天的英语打卡完成啦！";
+
+  useEffect(() => {
+    if (!currentPage || !identity) {
+      return;
+    }
+
+    void playTeacherAudio(currentPage);
+  }, [currentPage, identity]);
 
   async function handleIdentify(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -122,8 +146,10 @@ function App() {
     try {
       const result = await identify(identifier);
       setIdentity(result);
+      setCheckinReward(null);
+      setPageIndex(0);
       if (result.mode === "guest") {
-        setMessage("没有找到这个姓名或学号，已进入游客模式。游客可以点读，但不能保存录音和打卡。");
+        setMessage("没有找到这个姓名或学号，已进入游客模式。游客可以点读，但不能正式打卡。");
       }
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "识别失败");
@@ -132,56 +158,33 @@ function App() {
     }
   }
 
-  async function playTeacherAudio() {
-    if (!currentPage) return;
+  async function playTeacherAudio(page = currentPage) {
+    if (!page) return;
     if (audioRef.current) {
       audioRef.current.pause();
       audioRef.current = null;
       setIsPlaying(false);
     }
-    recorder.reset();
     setMessage(null);
-    const audio = new Audio(mediaUrl(currentPage.audioUrl));
+    const audio = new Audio(mediaUrl(page.audioUrl));
     audioRef.current = audio;
     audio.onplay = () => setIsPlaying(true);
     audio.onpause = () => setIsPlaying(false);
     audio.onended = () => {
       setIsPlaying(false);
-      setPageStates((previous) => ({ ...previous, [currentPage.id]: "played" }));
-      if (autoMode && lesson && pageIndex < lesson.pages.length - 1) {
-        window.setTimeout(() => setPageIndex((index) => index + 1), 650);
+      if (autoMode && lesson && page.order < lesson.pages.length) {
+        window.setTimeout(() => setPageIndex(page.order), 650);
       }
     };
     try {
       await audio.play();
     } catch {
-      setMessage("播放被浏览器拦截了，请再点一次播放。");
-    }
-  }
-
-  async function saveRecording() {
-    if (!currentPage || !lesson || !recorder.blob || identity?.mode !== "student") return;
-    setLoading(true);
-    setMessage(null);
-    try {
-      const saved = await uploadRecording({
-        token: identity.token,
-        lessonId: lesson.id,
-        pageId: currentPage.id,
-        blob: recorder.blob
-      });
-      setRecordings((previous) => ({ ...previous, [currentPage.id]: saved }));
-      setPageStates((previous) => ({ ...previous, [currentPage.id]: "recorded" }));
-      recorder.reset();
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : "录音保存失败");
-    } finally {
-      setLoading(false);
+      setMessage("播放被浏览器拦截了，请再点一次“听老师读”。");
     }
   }
 
   async function completeCheckin() {
-    if (!lesson || identity?.mode !== "student") return;
+    if (!lesson || identity?.mode !== "student" || !isLastPage) return;
     setLoading(true);
     setMessage(null);
     try {
@@ -200,11 +203,58 @@ function App() {
     }
   }
 
-  function playMyRecording() {
-    if (!currentPage) return;
-    const saved = recordings[currentPage.id];
-    if (!saved) return;
-    new Audio(mediaUrl(saved.audioUrl)).play().catch(() => setMessage("录音暂时无法播放"));
+  async function copyShareText() {
+    try {
+      await navigator.clipboard.writeText(shareText);
+      setMessage("打卡文案已复制");
+    } catch {
+      setMessage("复制失败，请长按文案手动复制");
+    }
+  }
+
+  async function toggleCheckinDate(date: string) {
+    if (identity?.mode !== "student" || !stats) return;
+    setSavingDate(date);
+    setMessage(null);
+    try {
+      const nextStats = await updateCheckinDay({
+        token: identity.token,
+        date,
+        checked: !checkedDateSet.has(date)
+      });
+      setStats(nextStats);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "修改打卡天数失败");
+    } finally {
+      setSavingDate(null);
+    }
+  }
+
+  function restartLesson() {
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current = null;
+    }
+    setIsPlaying(false);
+    setPageIndex(0);
+    setCheckinReward(null);
+    setMessage(null);
+  }
+
+  if (showAdmin && mode === "admin") {
+    return (
+      <main className="shell">
+        <div className="mode-switch">
+          <button type="button" onClick={() => setMode("student")}>
+            孩子端
+          </button>
+          <button type="button" className="active" onClick={() => setMode("admin")}>
+            管理员
+          </button>
+        </div>
+        <AdminPanel />
+      </main>
+    );
   }
 
   if (!lesson) {
@@ -234,6 +284,10 @@ function App() {
         <>
           <section className="brand-strip" aria-label="京师幼学蓝湾幼儿园 实验小一班">
             <img src="/jsyx-brand.png" alt="京师幼学蓝湾幼儿园" />
+            <div className="school-name">
+              <span>J·S·Y·X</span>
+              <strong>京师幼学蓝湾幼儿园</strong>
+            </div>
             <div className="class-mark">
               <span>实验小一班</span>
               <strong>English Learning Challenge</strong>
@@ -247,7 +301,7 @@ function App() {
             </div>
             <div className="stats-pill">
               <Flower2 aria-hidden />
-              <span>{stats ? `${stats.totalCheckins} 天` : "今日"}</span>
+              <span>{stats ? `${stats.totalCheckins} 天` : "7 月挑战"}</span>
             </div>
           </section>
 
@@ -255,12 +309,12 @@ function App() {
             <section className="identify-panel">
               <UserRound size={42} aria-hidden />
               <h1>输入姓名或学号</h1>
-              <p>本班孩子可以保存跟读和打卡；游客也可以先试学。</p>
+              <p>本班孩子可以直接学习和打卡；游客也可以先试学。</p>
               <form onSubmit={handleIdentify} className="identify-form">
                 <input
                   value={identifier}
                   onChange={(event) => setIdentifier(event.target.value)}
-                  placeholder="例如：22 或 林君铭"
+                  placeholder="例如：4 或 测试账号"
                   autoFocus
                 />
                 <button disabled={loading || !identifier.trim()} type="submit">
@@ -283,70 +337,34 @@ function App() {
                 </label>
               </div>
 
-              {currentPage && (
+              {currentPage ? (
                 <article className="study-card">
                   {currentPage.imageUrl ? <img src={mediaUrl(currentPage.imageUrl)} alt="" /> : null}
                   <FitText text={currentPage.text} type={currentPage.type} />
                   <p className="hint">{currentPage.type === "word" ? "Listen and repeat" : "Read after the teacher"}</p>
 
                   <div className="primary-actions">
-                    <button className="round-action" onClick={playTeacherAudio} disabled={isPlaying}>
+                    <button className="round-action" onClick={() => void playTeacherAudio()}>
                       {isPlaying ? <Pause /> : <Play />}
-                      <span>{isPlaying ? "正在播放" : "听老师读"}</span>
+                      <span>{isPlaying ? "重新播放" : "听老师读"}</span>
                     </button>
-
-                    {identity.mode === "student" ? (
-                      recorder.isRecording ? (
-                        <button className="round-action recording" onClick={recorder.stop}>
-                          <Pause />
-                          <span>停止录音</span>
-                        </button>
-                      ) : (
-                        <button className="round-action" onClick={recorder.start}>
-                          <Mic />
-                          <span>我来跟读</span>
-                        </button>
-                      )
-                    ) : (
-                      <button className="round-action muted" disabled>
-                        <Mic />
-                        <span>游客不保存</span>
-                      </button>
-                    )}
                   </div>
-
-                  {recorder.error ? <p className="soft-message">{recorder.error}</p> : null}
-
-                  {recorder.blob ? (
-                    <div className="recording-panel">
-                      <button onClick={() => new Audio(URL.createObjectURL(recorder.blob!)).play()}>听我的声音</button>
-                      <button onClick={saveRecording} disabled={loading}>
-                        保存这一页
-                      </button>
-                      <button onClick={recorder.reset} aria-label="重录">
-                        <RotateCcw size={18} />
-                      </button>
-                    </div>
-                  ) : null}
-
-                  {recordings[currentPage.id] ? (
-                    <button className="listen-mine" onClick={playMyRecording}>
-                      已保存，听一下我的跟读
-                    </button>
-                  ) : null}
                 </article>
-              )}
+              ) : null}
 
               <div className="page-nav">
-                <button disabled={pageIndex === 0} onClick={() => setPageIndex((index) => index - 1)}>
+                <button disabled={pageIndex === 0} onClick={() => setPageIndex((index) => Math.max(index - 1, 0))}>
                   <ArrowLeft />
                   上一页
                 </button>
-                <button disabled={pageIndex === lesson.pages.length - 1} onClick={() => setPageIndex((index) => index + 1)}>
+                <button
+                  disabled={pageIndex === lesson.pages.length - 1}
+                  onClick={() => setPageIndex((index) => Math.min(index + 1, lesson.pages.length - 1))}
+                >
                   下一页
                   <ArrowRight />
                 </button>
-                <button onClick={playTeacherAudio}>
+                <button onClick={restartLesson}>
                   <RotateCcw />
                   再来一遍
                 </button>
@@ -354,22 +372,104 @@ function App() {
 
               <section className="finish-panel">
                 {identity.mode === "guest" ? (
-                  <p>游客模式可以点读体验。输入本班姓名或学号后，就能保存录音和打卡。</p>
-                ) : checkinReward ? (
+                  <p>游客模式可以点读体验。输入本班姓名或学号后，就能正式打卡。</p>
+                ) : finishedToday ? (
                   <div className="reward">
                     <img src="/jsyx-smile.png" alt="" />
-                    <span className="reward-badge">第 {checkinDay} 天打卡完成</span>
-                    <h2>{studentName}，今天挑战成功！</h2>
-                    <p>{checkinReward}</p>
-                    <strong>Love English, From JSYX</strong>
+                    <span className="reward-badge">完成第 {formatCheckinDay(stats?.totalCheckins ?? shareDay)} 天打卡</span>
+                    <h2>恭喜 {studentName}</h2>
+                    <p>{shareText}</p>
+                    <strong>{rewardMessage}</strong>
+                    <button type="button" className="share-copy-button" onClick={() => void copyShareText()}>
+                      <Copy />
+                      复制打卡文案
+                    </button>
                   </div>
                 ) : (
-                  <button className="finish-button" onClick={completeCheckin} disabled={!allDone || loading}>
-                    <Sparkles />
-                    完成今日打卡
-                  </button>
+                  <div className="finish-cta">
+                    <button className="finish-button" onClick={() => void completeCheckin()} disabled={!isLastPage || loading}>
+                      <Sparkles />
+                      {isLastPage ? (loading ? "打卡中..." : "完成今日打卡") : "翻到最后一页即可打卡"}
+                    </button>
+                    <p>只要完成最后一页，就可以打卡。</p>
+                  </div>
                 )}
               </section>
+
+              {identity.mode === "student" && stats ? (
+                <>
+                  <section className="share-panel">
+                    <div className="section-title">
+                      <div>
+                        <p>打卡文案</p>
+                        <strong>打开页面就能直接复制</strong>
+                      </div>
+                      <button type="button" className="mini-action" onClick={() => void copyShareText()}>
+                        <Copy />
+                        复制
+                      </button>
+                    </div>
+                    <div className="share-copy-card">
+                      <p>{shareText}</p>
+                    </div>
+                  </section>
+
+                  <section className="calendar-panel">
+                    <div className="section-title">
+                      <div>
+                        <p>打卡日历</p>
+                        <strong>
+                          {stats.campaignStartDate} - {stats.campaignEndDate}
+                        </strong>
+                      </div>
+                      <button
+                        type="button"
+                        className={`mini-action ${editingCalendar ? "active" : ""}`}
+                        onClick={() => setEditingCalendar((value) => !value)}
+                      >
+                        <PencilLine />
+                        {editingCalendar ? "完成修改" : "修改打卡天数"}
+                      </button>
+                    </div>
+
+                    <div className="calendar-weekdays">
+                      {["一", "二", "三", "四", "五", "六", "日"].map((weekday) => (
+                        <span key={weekday}>{weekday}</span>
+                      ))}
+                    </div>
+
+                    <div className="calendar-grid">
+                      {calendarDays.map((day) => {
+                        const checked = checkedDateSet.has(day.date);
+                        const editable = day.date < todayKey;
+                        return (
+                          <button
+                            key={day.date}
+                            type="button"
+                            className={[
+                              "calendar-day",
+                              checked ? "checked" : "",
+                              editingCalendar && editable ? "editable" : "",
+                              savingDate === day.date ? "saving" : ""
+                            ]
+                              .filter(Boolean)
+                              .join(" ")}
+                            disabled={!editingCalendar || !editable || savingDate !== null}
+                            onClick={() => void toggleCheckinDate(day.date)}
+                          >
+                            <span>{day.dayNumber}</span>
+                            <strong>{checked ? "✅" : editingCalendar && editable ? "○" : ""}</strong>
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    <p className="calendar-tip">
+                      {editingCalendar ? "现在可以修改过去的日期；今天和未来日期不会开放修改。" : "已打卡日期会显示 ✅。"}
+                    </p>
+                  </section>
+                </>
+              ) : null}
             </section>
           )}
 

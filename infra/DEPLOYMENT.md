@@ -10,7 +10,7 @@
 - GCE：`newapi-relay-1` / `us-central1-a`
 - Cloudflare Pages project：`kindergarten-english-mvp`
 
-后台入口在前端页面右上角“管理”。管理员密钥保存在 `outputs/deployment-secrets.txt`，不要发到班级群。
+后台默认不在孩子端页面暴露，访问 `https://kindergarten-english-mvp.pages.dev/?admin=1` 才会显示管理员入口。管理员密钥保存在 `outputs/deployment-secrets.txt`，不要发到班级群。
 
 当前先用 `nip.io` 给 GCE IP 临时提供 hostname，避免 Cloudflare Pages Function 代理裸 IP 时触发 `error code: 1003`。后续拿到 Cloudflare DNS 编辑权限后，把 `english-api.aitifen.cc` 指到 `34.55.229.129`，再把 Pages secret `API_ORIGIN` 改成正式域名即可。
 
@@ -23,6 +23,234 @@ curl -X POST https://kindergarten-english-mvp.pages.dev/api/identify \
   --data '{"identifier":"26"}'
 curl -I https://kindergarten-english-mvp.pages.dev/media/uploads/2026-07-01/page-1.mp3
 ```
+
+## 每日更新课程
+
+现在推荐直接走人工素材目录导入，不再依赖自动裁图作为主流程。
+
+目录最低约定：
+
+```text
+page-1.jpg
+page-1.mp3
+page-2.jpg
+page-2.mp3
+words.txt
+```
+
+发布当天课程：
+
+```bash
+npm run media:import -w @kindergarten-english/api -- /abs/path/to/lesson-dir 2026-07-03
+```
+
+如果只是更新当天课程素材，不改页面代码，前端不用重新发。只需要把后端这次更新同步到 GCE 即可。
+
+## 每日课程 SOP（从视频到上线）
+
+这是现在最稳、最省心的一套流程，按这个做就行。
+
+### 1. 你每天会用到的工具
+
+- `ffmpeg`
+  - 用途：从老师视频里抽音频、抽封面、半自动切分音频
+- 本地人工处理工具 thread：`codex://threads/019f1e2a-8b16-7491-a241-b797370e70d5`
+  - 用途：人工校正每页图片和音频，尤其适合单词挨得很近、自动裁图不理想的时候
+- 仓库脚本 `npm run media:process -w @kindergarten-english/api`
+  - 用途：先给出一版半自动音频切段和图片切块草稿
+- 仓库脚本 `npm run media:import -w @kindergarten-english/api`
+  - 用途：把你已经确认好的 `page-1.jpg / page-1.mp3 / words.txt` 导入到网站数据
+- 后端部署脚本 `infra/deploy-gce.sh`
+  - 用途：把当天课程素材和后端同步到线上 GCE
+- 前端直发脚本 `infra/deploy-pages-direct.mjs`
+  - 用途：只有页面代码改动时，才需要发 Pages
+
+### 2. 准备一个当天素材目录
+
+建议每天都建一个独立目录，例如：
+
+```text
+work/2026-07-03-lesson/
+  lesson.mp4
+  page-1.jpg
+  page-1.mp3
+  page-2.jpg
+  page-2.mp3
+  ...
+  words.txt
+```
+
+最终能导入的网站目录，最低只需要这三类文件：
+
+```text
+page-1.jpg
+page-1.mp3
+page-2.jpg
+page-2.mp3
+words.txt
+```
+
+`words.txt` 里每行一个单词，顺序和页码一一对应。
+
+### 3. 从视频提取音频和图片
+
+推荐分成两种方式。
+
+#### 方式 A：推荐，人工处理
+
+适用场景：
+
+- 单词之间挨得很近
+- 自动裁图会带到相邻内容
+- 需要你自己肉眼确认孩子看到的每一页效果
+
+做法：
+
+1. 把原始 `lesson.mp4` 放进当天目录
+2. 打开本地人工处理工具 thread：`codex://threads/019f1e2a-8b16-7491-a241-b797370e70d5`
+3. 让它按页导出：
+   - `page-1.jpg`
+   - `page-1.mp3`
+   - `page-2.jpg`
+   - `page-2.mp3`
+   - ...
+4. 自己快速看一遍图片和音频，确认编号、顺序、单词对应关系都对
+5. 新建 `words.txt`
+
+#### 方式 B：半自动草稿，再人工校正
+
+先装好 `ffmpeg`，然后跑：
+
+```bash
+npm run media:process -w @kindergarten-english/api -- /abs/path/to/lesson.mp4 2026-07-03 /abs/path/to/output-dir --words crayon,paper,pencil,scissors,backpack,book
+```
+
+这个脚本会自动生成一版：
+
+- `page-1.mp3`
+- `page-1.jpg`
+- `page-2.mp3`
+- `page-2.jpg`
+- `manifest.json`
+
+但这只是草稿，仍然要人工检查。尤其是：
+
+- 音频起止点是否太早或太晚
+- 图片是否切到相邻单词
+- `words` 顺序是否和老师视频一致
+
+### 4. 本地检查素材目录
+
+你每天交给网站前，先确认这几个点：
+
+- `page-N.jpg` 和 `page-N.mp3` 数量一致
+- `words.txt` 行数和页数一致
+- 页码从 `page-1` 连续编号，不要跳号
+- 图片能直接看
+- 音频能直接播
+
+最简单的自查：
+
+```bash
+ls -1 /abs/path/to/lesson-dir
+```
+
+### 5. 导入到仓库
+
+素材确认好以后，在仓库根目录运行：
+
+```bash
+npm run media:import -w @kindergarten-english/api -- /abs/path/to/lesson-dir 2026-07-03
+```
+
+这一步会做三件事：
+
+- 把图片和音频复制到 `apps/api/storage/uploads/2026-07-03/`
+- upsert 这一天的 `lesson`
+- 替换这一天的 `lesson_pages`
+
+如果你想自定义标题或页信息，可以在素材目录里放 `manifest.json`。
+
+### 6. 部署到线上
+
+这里要分清楚两种情况。
+
+#### 情况 A：只改了当天课程素材
+
+比如只是新的一天的图片、音频、词表变了，页面样式没改。
+
+这时只需要同步后端：
+
+```bash
+infra/deploy-gce.sh
+```
+
+原因很简单：
+
+- 当天课程数据和音频图片都在 API 这边
+- 前端页面本身没有变
+- Pages 上的孩子端会继续请求后端最新的 `/api/lessons/today`
+
+也就是说，**日更课程通常不需要重新发前端**。
+
+#### 情况 B：页面代码也改了
+
+比如你让我改了按钮、文案、日历、样式、品牌条。
+
+这时分两步：
+
+1. 先同步后端
+
+```bash
+infra/deploy-gce.sh
+```
+
+2. 再发前端
+
+```bash
+npm run build
+API_ORIGIN=http://34.55.229.129.nip.io:8080 node infra/deploy-pages-direct.mjs apps/web/dist
+```
+
+### 7. 上线后检查
+
+最少检查这三个：
+
+```bash
+curl https://kindergarten-english-mvp.pages.dev/api/lessons/today
+curl -X POST https://kindergarten-english-mvp.pages.dev/api/identify \
+  -H 'content-type: application/json' \
+  --data '{"identifier":"4"}'
+curl -I https://kindergarten-english-mvp.pages.dev/media/uploads/2026-07-03/page-1.mp3
+```
+
+如果 `today` 返回的是新课程，`identify` 正常，`page-1.mp3` 返回 `200`，当天就算发布完成。
+
+### 8. 最短版本
+
+如果你只想记住最短路径，就记这 4 步：
+
+1. 用人工工具把视频处理成 `page-N.jpg + page-N.mp3 + words.txt`
+2. 跑 `npm run media:import -w @kindergarten-english/api -- /abs/path/to/lesson-dir YYYY-MM-DD`
+3. 跑 `infra/deploy-gce.sh`
+4. 用 `curl` 检查 `today` 和 `page-1.mp3`
+
+## 前端更新方式
+
+前端现在推荐优先用这个直连脚本，避开本机 `wrangler pages deploy` 在 Node 25 下偶发卡死的问题：
+
+```bash
+npm run build
+API_ORIGIN=http://34.55.229.129.nip.io:8080 node infra/deploy-pages-direct.mjs apps/web/dist
+```
+
+只改前端页面时，直接跑上面两行就够了。
+
+脚本会自动：
+
+- 读取本机 `~/.wrangler/config/default.toml` 的 OAuth token
+- 上传 `apps/web/dist` 静态资源到 Pages
+- 生成一个最小代理 Worker，把 `/api/*` 和 `/media/*` 转发到 `API_ORIGIN`
 
 ## 快速重新部署
 

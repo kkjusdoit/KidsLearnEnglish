@@ -1,4 +1,4 @@
-import type { Checkin, IdentityResponse, Lesson, Recording, StudentStats } from "@kindergarten-english/shared";
+import type { Checkin, IdentityResponse, Lesson, StudentStats } from "@kindergarten-english/shared";
 
 const API_BASE =
   import.meta.env.VITE_API_BASE_URL ??
@@ -35,29 +35,6 @@ export async function getTodayLesson() {
   return request<Lesson>("/api/lessons/today");
 }
 
-export async function uploadRecording(params: {
-  token: string;
-  lessonId: string;
-  pageId: string;
-  blob: Blob;
-}) {
-  const formData = new FormData();
-  formData.append("lessonId", params.lessonId);
-  formData.append("pageId", params.pageId);
-  formData.append("file", params.blob, "recording.webm");
-
-  const response = await fetch(`${API_BASE}/api/recordings`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${params.token}`
-    },
-    body: formData
-  });
-  const body = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(body.error ?? "录音保存失败");
-  return body as Recording;
-}
-
 export async function createCheckin(params: {
   token: string;
   lessonId: string;
@@ -80,5 +57,22 @@ export async function getStats(token: string) {
     headers: {
       Authorization: `Bearer ${token}`
     }
+  });
+}
+
+export async function updateCheckinDay(params: {
+  token: string;
+  date: string;
+  checked: boolean;
+}) {
+  return request<StudentStats>("/api/students/me/checkin-days", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${params.token}`
+    },
+    body: JSON.stringify({
+      date: params.date,
+      checked: params.checked
+    })
   });
 }

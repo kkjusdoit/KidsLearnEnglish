@@ -64,6 +64,9 @@ export type StudentStats = {
   totalCheckins: number;
   streakDays: number;
   completedToday: boolean;
+  checkedDates: string[];
+  campaignStartDate: string;
+  campaignEndDate: string;
   latestRewardText?: string;
 };
 

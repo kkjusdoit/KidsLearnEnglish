@@ -23,10 +23,17 @@ npm run dev -w @kindergarten-english/web
 
 本地开发数据库会自动种子：
 
-- 学号：`26`
-- 姓名：`安梓西`
+- 学号：`4`
+- 姓名：`测试账号`
 
 未匹配姓名或学号会进入游客模式。
+
+当前孩子端规则：
+
+- 只保留“听老师读”，切页时自动播放当前页
+- 只要翻到最后一页，就可以完成当天打卡
+- 打卡页会显示可复制文案、7 月活动日历，以及过去日期的手动补打卡入口
+- 管理员入口默认隐藏，只有 `?admin=1` 才显示
 
 ## 媒体处理
 
@@ -38,8 +45,52 @@ npm run media:analyze -w @kindergarten-english/api -- /path/to/video.mp4
 
 脚本会输出建议的 `LessonPage` JSON 片段，发布前需要人工校对每页文本和音频。
 
+## 人工素材导入
+
+现在的推荐流程是人工准备好每天的音频和图片，再直接导入网站。
+
+最低目录约定：
+
+```text
+my-lesson/
+  page-1.jpg
+  page-1.mp3
+  page-2.jpg
+  page-2.mp3
+  words.txt
+```
+
+`words.txt` 每行一个单词，顺序对应 `page-1 / page-2 / ...`。
+
+导入并发布当天课程：
+
+```bash
+npm run media:import -w @kindergarten-english/api -- /abs/path/to/my-lesson 2026-07-03
+```
+
+也支持直接传词表：
+
+```bash
+npm run media:import -w @kindergarten-english/api -- /abs/path/to/my-lesson 2026-07-03 --words crayon,paper,pencil,scissors,backpack,book
+```
+
+如果目录里放 `manifest.json`，可覆盖标题、状态、每页文本和可选的 `startMs/endMs`。导入脚本会：
+
+- 复制素材到 `apps/api/storage/uploads/<date>/`
+- upsert 当天 `lessons`
+- 替换当天 `lesson_pages`
+
 ## 部署
 
 详见 [infra/DEPLOYMENT.md](infra/DEPLOYMENT.md)。
+
+如果是每天更新老师视频对应的课程素材，直接看 `infra/DEPLOYMENT.md` 里的“每日课程 SOP（从视频到上线）”。
+
+如果只是发布前端页面，推荐直接用：
+
+```bash
+npm run build
+API_ORIGIN=http://34.55.229.129.nip.io:8080 node infra/deploy-pages-direct.mjs apps/web/dist
+```
 
 # KidsLearnEnglish
