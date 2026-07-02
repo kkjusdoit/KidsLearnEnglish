@@ -337,7 +337,7 @@
       border-radius: 8px;
       padding: 10px 14px;
       display: grid;
-      grid-template-columns: 36px 1fr 180px 100px 72px; /* ID, Word, Audio, BoxInfo, Actions */
+      grid-template-columns: 24px 36px 1fr 180px 100px 72px; /* Checkbox, ID, Word, Audio, BoxInfo, Actions */
       align-items: center;
       gap: 12px;
       transition: all 160ms ease;
@@ -554,9 +554,13 @@
 
         <!-- Slices Table -->
         <div class="items-panel">
-          <div class="panel-header" style="background: transparent; border-top: none;">
+          <div class="panel-header" style="background: transparent; border-top: none; gap: 8px; flex-wrap: wrap;">
             <span>段落列表</span>
-            <button id="addItemBtn" class="btn success" style="min-height: 28px; padding: 0 8px;">➕ 添加段落</button>
+            <div style="display: flex; gap: 6px;">
+              <button id="mergeSelectedBtn" class="btn" style="min-height: 28px; padding: 0 8px; font-size: 11px;" disabled>🔗 合并选中</button>
+              <button id="mergePairsBtn" class="btn" style="min-height: 28px; padding: 0 8px; font-size: 11px;" title="将现有段落两两合并 (1+2, 3+4...)">👥 两两合并</button>
+              <button id="addItemBtn" class="btn success" style="min-height: 28px; padding: 0 8px; font-size: 11px;">➕ 添加段落</button>
+            </div>
           </div>
           <div class="items-list" id="itemsListContainer">
             <!-- Dynamically populated rows -->
@@ -667,6 +671,10 @@ cherry
     const videoPreviewContainer = document.getElementById('videoPreviewContainer');
     const videoElement = document.getElementById('videoElement');
     const captureFrameBtn = document.getElementById('captureFrameBtn');
+
+    // Merge Elements
+    const mergeSelectedBtn = document.getElementById('mergeSelectedBtn');
+    const mergePairsBtn = document.getElementById('mergePairsBtn');
     
     // Waveform Canvas
     const waveCanvas = document.getElementById('waveformCanvas');
@@ -1386,8 +1394,114 @@ cherry
       }
     }
 
+    function updateMergeSelectedBtnState() {
+      if (!mergeSelectedBtn) return;
+      const checkedItemsCount = state.items.filter(it => it.checked).length;
+      mergeSelectedBtn.disabled = checkedItemsCount < 2;
+    }
+
+    mergeSelectedBtn.addEventListener('click', () => {
+      const selectedItems = state.items.filter(it => it.checked);
+      if (selectedItems.length < 2) return;
+
+      // Sort selected items by start time
+      selectedItems.sort((a, b) => a.start - b.start);
+
+      // Find min start and max end
+      const minStart = Math.min(...selectedItems.map(it => it.start));
+      const maxEnd = Math.max(...selectedItems.map(it => it.end));
+
+      // Combine words
+      const combinedWords = selectedItems
+        .map(it => it.word.trim())
+        .filter(w => w.length > 0)
+        .join(' ');
+
+      // Use the first selected item to store the merged result
+      const firstItem = selectedItems[0];
+      firstItem.start = minStart;
+      firstItem.end = maxEnd;
+      firstItem.word = combinedWords || `合并的段落`;
+      firstItem.checked = false;
+
+      // Find any box from the merged items to retain
+      const existingBox = selectedItems.find(it => it.box)?.box;
+      if (existingBox) {
+        firstItem.box = existingBox;
+      }
+
+      // Remove the other selected items
+      selectedItems.slice(1).forEach(itemToRemove => {
+        const idx = state.items.findIndex(it => it.id === itemToRemove.id);
+        if (idx !== -1) {
+          state.items.splice(idx, 1);
+        }
+      });
+
+      selectItem(firstItem.id);
+      renderItemsList();
+      syncWordsTextareaFromList();
+      setStatus(`已合并 ${selectedItems.length} 个段落`);
+    });
+
+    mergePairsBtn.addEventListener('click', () => {
+      if (state.items.length < 2) {
+        alert('没有足够的段落进行合并！');
+        return;
+      }
+
+      if (!confirm('是否将当前所有段落两两合并（第1+2段合并，第3+4段合并...）？')) {
+        return;
+      }
+
+      // Sort items by start time first to ensure sequence
+      state.items.sort((a, b) => a.start - b.start);
+
+      const mergedItems = [];
+      for (let i = 0; i < state.items.length; i += 2) {
+        if (i + 1 < state.items.length) {
+          const item1 = state.items[i];
+          const item2 = state.items[i + 1];
+
+          // Combine range
+          item1.end = item2.end;
+          
+          // Combine text
+          const combinedWord = [item1.word.trim(), item2.word.trim()]
+            .filter(w => w.length > 0)
+            .join(' ');
+          item1.word = combinedWord || item1.word;
+
+          // Merge box if target is missing but second has one
+          if (!item1.box && item2.box) {
+            item1.box = item2.box;
+          }
+          item1.checked = false;
+          
+          mergedItems.push(item1);
+        } else {
+          // Odd item at the end stays as is
+          const oddItem = state.items[i];
+          oddItem.checked = false;
+          mergedItems.push(oddItem);
+        }
+      }
+
+      state.items = mergedItems;
+      if (state.items.length > 0) {
+        selectItem(state.items[0].id);
+      } else {
+        state.activeId = null;
+      }
+
+      renderItemsList();
+      syncWordsTextareaFromList();
+      setStatus(`已对现有段落完成两两合并，当前剩余 ${state.items.length} 个段落。`);
+    });
+
     function renderItemsList() {
       itemsListContainer.innerHTML = '';
+      updateMergeSelectedBtnState();
       
       if (state.items.length === 0) {
         itemsListContainer.innerHTML = `
@@ -1402,6 +1516,29 @@ cherry
         const row = document.createElement('div');
         row.className = `item-row ${item.id === state.activeId ? 'active' : ''}`;
         row.dataset.id = item.id;
+
+        // Checkbox for selection
+        const checkCol = document.createElement('div');
+        checkCol.style.display = 'flex';
+        checkCol.style.alignItems = 'center';
+        checkCol.style.justifyContent = 'center';
+        
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.className = 'item-select';
+        checkbox.style.width = '16px';
+        checkbox.style.height = '16px';
+        checkbox.style.cursor = 'pointer';
+        checkbox.checked = !!item.checked;
+        checkbox.addEventListener('change', (e) => {
+          item.checked = e.target.checked;
+          updateMergeSelectedBtnState();
+        });
+        checkbox.addEventListener('click', (e) => {
+          e.stopPropagation();
+        });
+        checkCol.appendChild(checkbox);
+        row.appendChild(checkCol);
 
         // ID
         const idCol = document.createElement('div');
