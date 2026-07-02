@@ -490,6 +490,11 @@
           </div>
         </div>
 
+        <div id="videoPreviewContainer" style="display: none; flex-direction: column; gap: 8px; margin-top: -8px; margin-bottom: 8px;">
+          <video id="videoElement" controls style="width: 100%; border-radius: 8px; border: 1px solid var(--panel-border); background: black; max-height: 180px;"></video>
+          <button id="captureFrameBtn" class="btn success" style="width: 100%; min-height: 32px; font-size: 12px; font-weight: 600;">📷 截取当前帧作为教材背景</button>
+        </div>
+
         <div class="form-group">
           <label>2. 导入教材页大图 (JPG/PNG/WEBP)</label>
           <div class="file-input-wrapper">
@@ -634,6 +639,12 @@ cherry
       dragHandle: null, // 'tl', 'tr', 'bl', 'br' or 'move'
       dragStartPos: { x: 0, y: 0 },
       draggedBox: null,
+
+      // Audio spectrum interaction state
+      isDraggingAudioStart: false,
+      isDraggingAudioEnd: false,
+      isSelectingAudio: false,
+      audioEdgeHitWidth: 8,
       
       // Export directory
       directoryHandle: null
@@ -651,6 +662,11 @@ cherry
     const selectDirBtn = document.getElementById('selectDirBtn');
     const exportAllBtn = document.getElementById('exportAllBtn');
     const zipDownloadBtn = document.getElementById('zipDownloadBtn');
+    
+    // Video Elements
+    const videoPreviewContainer = document.getElementById('videoPreviewContainer');
+    const videoElement = document.getElementById('videoElement');
+    const captureFrameBtn = document.getElementById('captureFrameBtn');
     
     // Waveform Canvas
     const waveCanvas = document.getElementById('waveformCanvas');
@@ -685,7 +701,20 @@ cherry
 
       document.getElementById('audioFileName').textContent = file.name;
       state.audioFileName = file.name.replace(/\.[^/.]+$/, "");
-      setStatus(`正在读取音频: ${file.name}...`);
+      setStatus(`正在读取文件: ${file.name}...`);
+
+      // Check if file is a video
+      const isVideo = file.type.startsWith('video/') || 
+                      ['mp4', 'mov', 'm4v', 'webm', 'ogg', 'avi', 'mkv'].includes(file.name.split('.').pop().toLowerCase());
+
+      if (isVideo) {
+        videoElement.src = URL.createObjectURL(file);
+        videoPreviewContainer.style.display = 'flex';
+        setStatus(`视频预览已加载，解码音轨中...`);
+      } else {
+        videoElement.src = '';
+        videoPreviewContainer.style.display = 'none';
+      }
 
       try {
         const arrayBuffer = await file.arrayBuffer();
@@ -709,6 +738,44 @@ cherry
         console.error(err);
         setStatus('音频解码失败，请确保格式支持。');
         alert('音视频解码失败，如果导入的是视频文件，请尝试使用更常见的 H.264/AAC MP4 格式！');
+      }
+    });
+
+    // Capture current frame from video as image background
+    captureFrameBtn.addEventListener('click', () => {
+      if (!videoElement.readyState || videoElement.readyState < 2) {
+        alert('视频未准备好，请稍候！');
+        return;
+      }
+
+      try {
+        setStatus('正在截取视频当前帧...');
+        const canvas = document.createElement('canvas');
+        canvas.width = videoElement.videoWidth;
+        canvas.height = videoElement.videoHeight;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(videoElement, 0, 0, canvas.width, canvas.height);
+
+        const dataUrl = canvas.toDataURL('image/png');
+        const img = new Image();
+        img.onload = () => {
+          state.imageElement = img;
+          state.imageName = state.audioFileName || 'video-frame';
+          document.getElementById('imagePlaceholder').style.display = 'none';
+          document.getElementById('imageFileName').textContent = '视频截取帧.png';
+          autoImageSplitBtn.disabled = false;
+          checkEnableExport();
+          
+          resetZoom();
+          resizeImageCanvas();
+          drawImage();
+          setStatus(`已截取视频帧作为背景: ${img.naturalWidth} x ${img.naturalHeight}`);
+        };
+        img.src = dataUrl;
+      } catch (err) {
+        console.error(err);
+        setStatus('视频帧截取失败');
+        alert(`截取视频帧失败: ${err.message}`);
       }
     });
 
@@ -780,8 +847,13 @@ cherry
         waveCtx.fillRect(startX, 0, endX - startX, height);
 
         // Segment boundaries
-        waveCtx.strokeStyle = state.activeId === item.id ? 'oklch(62% 0.16 230)' : 'oklch(35% 0.04 240 / 0.5)';
-        waveCtx.lineWidth = state.activeId === item.id ? 2 : 1;
+        if (state.activeId === item.id) {
+          waveCtx.strokeStyle = '#e74c3c';
+          waveCtx.lineWidth = 4;
+        } else {
+          waveCtx.strokeStyle = 'oklch(35% 0.04 240 / 0.5)';
+          waveCtx.lineWidth = 1;
+        }
         
         waveCtx.beginPath();
         waveCtx.moveTo(startX, 0);
@@ -900,6 +972,125 @@ cherry
     stopBtn.addEventListener('click', () => {
       stopPlayback();
       updateTimeDisplay(0);
+    });
+
+    // --- WAVEFORM INTERACTIONS ---
+
+    waveCanvas.addEventListener('mousedown', (e) => {
+      if (!state.audioBuffer) return;
+      
+      const rect = waveCanvas.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const duration = state.audioBuffer.duration;
+      const time = (x / waveCanvas.width) * duration;
+
+      // Find the active segment
+      let activeItem = state.items.find(it => it.id === state.activeId);
+      if (!activeItem) {
+        if (state.items.length > 0) {
+          selectItem(state.items[0].id);
+          activeItem = state.items[0];
+        } else {
+          activeItem = addNewItem(0, duration);
+        }
+      }
+
+      const startX = (activeItem.start / duration) * waveCanvas.width;
+      const endX = (activeItem.end / duration) * waveCanvas.width;
+
+      // Check if clicked near start boundary
+      if (Math.abs(x - startX) <= state.audioEdgeHitWidth) {
+        state.isDraggingAudioStart = true;
+        waveCanvas.style.cursor = 'ew-resize';
+        return;
+      }
+
+      // Check if clicked near end boundary
+      if (Math.abs(x - endX) <= state.audioEdgeHitWidth) {
+        state.isDraggingAudioEnd = true;
+        waveCanvas.style.cursor = 'ew-resize';
+        return;
+      }
+
+      // If clicked inside the active selection, play it
+      if (time >= activeItem.start && time <= activeItem.end) {
+        play(time, activeItem.end - time);
+        return;
+      }
+
+      // Clicked outside: start drawing a new range
+      state.isSelectingAudio = true;
+      activeItem.start = time;
+      activeItem.end = time;
+      
+      drawWaveform();
+      updateItemRowDisplay(activeItem);
+    });
+
+    waveCanvas.addEventListener('mousemove', (e) => {
+      if (!state.audioBuffer) return;
+
+      const rect = waveCanvas.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const duration = state.audioBuffer.duration;
+      const time = Math.max(0, Math.min(duration, (x / waveCanvas.width) * duration));
+
+      const activeItem = state.items.find(it => it.id === state.activeId);
+
+      if (state.isDraggingAudioStart && activeItem) {
+        if (time < activeItem.end) {
+          activeItem.start = time;
+          const row = document.querySelector(`.item-row[data-id="${activeItem.id}"]`);
+          if (row) {
+            const startInp = row.querySelector('.audio-inputs input:first-of-type');
+            if (startInp) startInp.value = time.toFixed(1);
+          }
+        }
+        drawWaveform();
+        return;
+      }
+
+      if (state.isDraggingAudioEnd && activeItem) {
+        if (time > activeItem.start) {
+          activeItem.end = time;
+          const row = document.querySelector(`.item-row[data-id="${activeItem.id}"]`);
+          if (row) {
+            const endInp = row.querySelector('.audio-inputs input:last-of-type');
+            if (endInp) endInp.value = time.toFixed(1);
+          }
+        }
+        drawWaveform();
+        return;
+      }
+
+      if (state.isSelectingAudio && activeItem) {
+        activeItem.end = time;
+        const row = document.querySelector(`.item-row[data-id="${activeItem.id}"]`);
+        if (row) {
+          const startInp = row.querySelector('.audio-inputs input:first-of-type');
+          const endInp = row.querySelector('.audio-inputs input:last-of-type');
+          if (startInp && endInp) {
+            startInp.value = Math.min(activeItem.start, time).toFixed(1);
+            endInp.value = Math.max(activeItem.start, time).toFixed(1);
+          }
+        }
+        drawWaveform();
+        return;
+      }
+
+      // Hover styling
+      if (activeItem) {
+        const startX = (activeItem.start / duration) * waveCanvas.width;
+        const endX = (activeItem.end / duration) * waveCanvas.width;
+
+        if (Math.abs(x - startX) <= state.audioEdgeHitWidth || Math.abs(x - endX) <= state.audioEdgeHitWidth) {
+          waveCanvas.style.cursor = 'ew-resize';
+        } else {
+          waveCanvas.style.cursor = 'crosshair';
+        }
+      } else {
+        waveCanvas.style.cursor = 'crosshair';
+      }
     });
 
     // --- CANVAS IMAGE DRAG AND RESIZE ---
@@ -1120,6 +1311,25 @@ cherry
     window.addEventListener('mouseup', () => {
       state.dragHandle = null;
       state.draggedBox = null;
+
+      if (state.isSelectingAudio) {
+        const activeItem = state.items.find(it => it.id === state.activeId);
+        if (activeItem) {
+          if (activeItem.start > activeItem.end) {
+            [activeItem.start, activeItem.end] = [activeItem.end, activeItem.start];
+          }
+          if (activeItem.end - activeItem.start < 0.1) {
+            activeItem.end = Math.min(state.audioBuffer.duration, activeItem.start + 1.0);
+          }
+          renderItemsList();
+        }
+        state.isSelectingAudio = false;
+      }
+      if (state.isDraggingAudioStart || state.isDraggingAudioEnd) {
+        state.isDraggingAudioStart = false;
+        state.isDraggingAudioEnd = false;
+        renderItemsList();
+      }
     });
 
     // --- SEGMENT/ITEM LIST ACTIONS ---
