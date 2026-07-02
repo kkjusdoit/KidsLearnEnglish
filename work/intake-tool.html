@@ -709,6 +709,7 @@ cherry
 
       document.getElementById('audioFileName').textContent = file.name;
       state.audioFileName = file.name.replace(/\.[^/.]+$/, "");
+      outputDirName.value = state.audioFileName;
       setStatus(`正在读取文件: ${file.name}...`);
 
       // Check if file is a video
