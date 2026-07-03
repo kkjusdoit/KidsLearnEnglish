@@ -26,30 +26,37 @@ import {
 } from "./api";
 import { AdminPanel } from "./admin";
 
+const siteTitle = "京师幼学实验小一班英语打卡网站";
 const challengeStartDate = "2026-06-29";
 
 function previewImagePath(url: string) {
   return url.replace(/(\.[a-z0-9]+)(\?.*)?$/i, ".preview.jpg$2");
 }
 
-function LessonImage({ imageUrl, alt }: { imageUrl: string; alt: string }) {
-  const originalSrc = mediaUrl(imageUrl);
-  const previewSrc = mediaUrl(previewImagePath(imageUrl));
-  const [src, setSrc] = useState(previewSrc);
+function mediaUrlWithCacheKey(url: string, cacheKey: string) {
+  const resolved = mediaUrl(url);
+  const separator = resolved.includes("?") ? "&" : "?";
+  return `${resolved}${separator}v=${encodeURIComponent(cacheKey)}`;
+}
+
+function LessonImage({ imageUrl, alt, cacheKey }: { imageUrl: string; alt: string; cacheKey: string }) {
+  const originalSrc = mediaUrlWithCacheKey(imageUrl, cacheKey);
+  const previewSrc = mediaUrlWithCacheKey(previewImagePath(imageUrl), `${cacheKey}-preview`);
+  const [usePreview, setUsePreview] = useState(false);
 
   useEffect(() => {
-    setSrc(previewSrc);
-  }, [previewSrc]);
+    setUsePreview(false);
+  }, [originalSrc]);
 
   return (
     <img
-      src={src}
+      src={usePreview ? previewSrc : originalSrc}
       alt={alt}
       loading="eager"
       decoding="async"
       onError={() => {
-        if (src !== originalSrc) {
-          setSrc(originalSrc);
+        if (!usePreview) {
+          setUsePreview(true);
         }
       }}
     />
@@ -174,6 +181,7 @@ function App() {
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => {
+    document.title = siteTitle;
     void loadTodayLesson();
     void refreshLessonList();
   }, []);
@@ -249,14 +257,6 @@ function App() {
   const rewardMessage = checkinReward ?? stats?.latestRewardText ?? "今天的英语打卡完成啦！";
 
   useEffect(() => {
-    if (!currentPage || !identity) {
-      return;
-    }
-
-    void playTeacherAudio(currentPage);
-  }, [currentPage, identity]);
-
-  useEffect(() => {
     if (!lesson) {
       return;
     }
@@ -266,15 +266,20 @@ function App() {
       return;
     }
 
-    const preview = new Image();
-    preview.src = mediaUrl(previewImagePath(nextPage.imageUrl));
+    const cacheKey = `${lesson.id}-${nextPage.id}`;
 
     const original = new Image();
-    original.src = mediaUrl(nextPage.imageUrl);
+    original.src = mediaUrlWithCacheKey(nextPage.imageUrl, cacheKey);
+
+    const preview = new Image();
+    preview.src = mediaUrlWithCacheKey(previewImagePath(nextPage.imageUrl), `${cacheKey}-preview`);
   }, [lesson, pageIndex]);
 
   async function handleIdentify(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (lesson?.pages[0]) {
+      void playTeacherAudio(lesson.pages[0], { showBlockedMessage: false });
+    }
     setLoading(true);
     setMessage(null);
     try {
@@ -292,29 +297,63 @@ function App() {
     }
   }
 
-  async function playTeacherAudio(page = currentPage) {
-    if (!page) return;
-    if (audioRef.current) {
-      audioRef.current.pause();
-      audioRef.current = null;
-      setIsPlaying(false);
+  async function playTeacherAudio(
+    page = currentPage,
+    options: { showBlockedMessage?: boolean } = {}
+  ) {
+    if (!page) return false;
+    const { showBlockedMessage = true } = options;
+    let audio = audioRef.current;
+    if (!audio) {
+      audio = new Audio();
+      audio.preload = "auto";
+      audioRef.current = audio;
     }
+
+    audio.pause();
     setMessage(null);
-    const audio = new Audio(mediaUrl(page.audioUrl));
-    audioRef.current = audio;
     audio.onplay = () => setIsPlaying(true);
     audio.onpause = () => setIsPlaying(false);
     audio.onended = () => {
       setIsPlaying(false);
       if (autoMode && lesson && page.order < lesson.pages.length) {
-        window.setTimeout(() => setPageIndex(page.order), 650);
+        const nextPage = lesson.pages[page.order];
+        window.setTimeout(() => {
+          setPageIndex(page.order);
+          void playTeacherAudio(nextPage, { showBlockedMessage: false });
+        }, 650);
       }
     };
+
+    const nextSrc = mediaUrl(page.audioUrl);
+    const nextSrcAbsolute = new URL(nextSrc, window.location.href).href;
+    if (audio.src !== nextSrcAbsolute) {
+      audio.src = nextSrc;
+    }
+    try {
+      audio.currentTime = 0;
+    } catch {
+      // Some embedded mobile browsers reject seeking before metadata is ready.
+    }
+
     try {
       await audio.play();
+      return true;
     } catch {
-      setMessage("播放被浏览器拦截了，请再点一次“听老师读”。");
+      setIsPlaying(false);
+      if (showBlockedMessage) {
+        setMessage("请点一次“听老师读”开始播放，之后翻页会自动播放。");
+      }
+      return false;
     }
+  }
+
+  function goToPage(nextIndex: number) {
+    if (!lesson) return;
+    const boundedIndex = Math.max(0, Math.min(nextIndex, lesson.pages.length - 1));
+    const nextPage = lesson.pages[boundedIndex];
+    setPageIndex(boundedIndex);
+    void playTeacherAudio(nextPage);
   }
 
   async function completeCheckin() {
@@ -367,12 +406,11 @@ function App() {
   function restartLesson() {
     if (audioRef.current) {
       audioRef.current.pause();
-      audioRef.current = null;
     }
     setIsPlaying(false);
-    setPageIndex(0);
     setCheckinReward(null);
     setMessage(null);
+    goToPage(0);
   }
 
   if (showAdmin && mode === "admin") {
@@ -453,7 +491,7 @@ function App() {
               <p className="date-label">
                 {lessonMode === "today" ? "今日课程" : "复习课程"} · {formatLessonDate(lesson.date)}
               </p>
-              <strong>{identity?.mode === "student" ? `${identity.student.displayName}，开始吧` : "实验小一班英语点读"}</strong>
+              <strong>{identity?.mode === "student" ? `${identity.student.displayName}，开始吧` : siteTitle}</strong>
             </div>
             <div className="stats-pill">
               <Flower2 aria-hidden />
@@ -539,7 +577,14 @@ function App() {
 
               {currentPage ? (
                 <article className="study-card">
-                  {currentPage.imageUrl ? <LessonImage imageUrl={currentPage.imageUrl} alt={currentPage.text} /> : null}
+                  {currentPage.imageUrl ? (
+                    <LessonImage
+                      key={`${lesson.id}-${currentPage.id}-${currentPage.imageUrl}`}
+                      imageUrl={currentPage.imageUrl}
+                      alt={currentPage.text}
+                      cacheKey={`${lesson.id}-${currentPage.id}`}
+                    />
+                  ) : null}
                   <FitText text={currentPage.text} type={currentPage.type} />
                   <p className="hint">{currentPage.type === "word" ? "Listen and repeat" : "Read after the teacher"}</p>
 
@@ -553,13 +598,13 @@ function App() {
               ) : null}
 
               <div className="page-nav">
-                <button disabled={pageIndex === 0} onClick={() => setPageIndex((index) => Math.max(index - 1, 0))}>
+                <button disabled={pageIndex === 0} onClick={() => goToPage(pageIndex - 1)}>
                   <ArrowLeft />
                   上一页
                 </button>
                 <button
                   disabled={pageIndex === lesson.pages.length - 1}
-                  onClick={() => setPageIndex((index) => Math.min(index + 1, lesson.pages.length - 1))}
+                  onClick={() => goToPage(pageIndex + 1)}
                 >
                   下一页
                   <ArrowRight />
