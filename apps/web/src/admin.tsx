@@ -172,15 +172,15 @@ export function AdminPanel() {
 
       <Section title="学生名单">
         <div className="admin-table">
-          <div className="admin-row admin-row-head">
+          <div className="admin-row admin-summary-row admin-row-head">
             <span>总学生</span>
             <span>今日打开</span>
             <span>今日打卡</span>
           </div>
-          <div className="admin-row">
-            <span>{dashboard?.summary.totalStudents ?? 0}</span>
-            <span>{dashboard?.summary.openedToday ?? 0}</span>
-            <span>{dashboard?.summary.checkedToday ?? 0}</span>
+          <div className="admin-row admin-summary-row">
+            <span data-label="总学生">{dashboard?.summary.totalStudents ?? 0}</span>
+            <span data-label="今日打开">{dashboard?.summary.openedToday ?? 0}</span>
+            <span data-label="今日打卡">{dashboard?.summary.checkedToday ?? 0}</span>
           </div>
         </div>
         <div className="admin-grid">
@@ -197,7 +197,7 @@ export function AdminPanel() {
           <button type="button" onClick={saveStudent}>保存学生</button>
         </div>
         <div className="admin-table">
-          <div className="admin-row admin-row-head">
+          <div className="admin-row admin-student-row admin-row-head">
             <span>学号</span>
             <span>姓名</span>
             <span>今日打开</span>
@@ -205,12 +205,12 @@ export function AdminPanel() {
             <span>打卡天数</span>
           </div>
           {dashboard?.students.map((student: AdminStudent) => (
-            <div key={student.id} className="admin-row">
-              <span>{student.studentId}</span>
-              <span>{student.name}</span>
-              <span>{student.openedToday ? `已打开${student.openCountToday > 1 ? `(${student.openCountToday})` : ""}` : "未打开"}</span>
-              <span>{student.checkedToday ? "已打卡" : "未打卡"}</span>
-              <span>{student.totalCheckinDays} 天</span>
+            <div key={student.id} className="admin-row admin-student-row">
+              <span data-label="学号">{student.studentId}</span>
+              <span data-label="姓名">{student.name}</span>
+              <span data-label="今日打开">{student.openedToday ? `已打开${student.openCountToday > 1 ? `(${student.openCountToday})` : ""}` : "未打开"}</span>
+              <span data-label="今日打卡">{student.checkedToday ? "已打卡" : "未打卡"}</span>
+              <span data-label="打卡天数">{student.totalCheckinDays} 天</span>
             </div>
           ))}
         </div>
@@ -234,11 +234,11 @@ export function AdminPanel() {
         </div>
         <div className="admin-table">
           {lessonOptions.map((lesson: AdminLessonSummary) => (
-            <div key={lesson.id} className="admin-row">
-              <span>{lesson.date}</span>
-              <span>{lesson.title}</span>
-              <span>{lesson.pageCount} 页</span>
-              <span>{lesson.status}</span>
+            <div key={lesson.id} className="admin-row admin-lesson-row">
+              <span data-label="日期">{lesson.date}</span>
+              <span data-label="标题">{lesson.title}</span>
+              <span data-label="页数">{lesson.pageCount} 页</span>
+              <span data-label="状态">{lesson.status}</span>
             </div>
           ))}
         </div>
@@ -247,11 +247,11 @@ export function AdminPanel() {
       <Section title="打卡记录">
         <div className="admin-table">
           {dashboard?.checkins.map((checkin: AdminCheckin) => (
-            <div key={checkin.id} className="admin-row">
-              <span>{checkin.lessonDate}</span>
-              <span>{checkin.studentName}</span>
-              <span>{checkin.pageCount} 页</span>
-              <span>{checkin.rewardText}</span>
+            <div key={checkin.id} className="admin-row admin-checkin-row">
+              <span data-label="日期">{checkin.lessonDate}</span>
+              <span data-label="姓名">{checkin.studentName}</span>
+              <span data-label="页数">{checkin.pageCount} 页</span>
+              <span data-label="奖励">{checkin.rewardText}</span>
             </div>
           ))}
         </div>

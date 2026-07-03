@@ -23,7 +23,10 @@
 
 body {
   margin: 0;
+  min-width: 320px;
   min-height: 100vh;
+  min-height: 100dvh;
+  overflow-x: hidden;
 }
 
 button,
@@ -44,8 +47,9 @@ button:disabled {
 .shell {
   width: min(100%, 760px);
   min-height: 100vh;
+  min-height: 100dvh;
   margin: 0 auto;
-  padding: 18px;
+  padding: max(18px, env(safe-area-inset-top)) 18px max(18px, env(safe-area-inset-bottom));
 }
 
 .centered {
@@ -318,7 +322,7 @@ button:disabled {
   display: grid;
   justify-items: center;
   gap: 16px;
-  min-height: min(58vh, 540px);
+  min-height: min(58svh, 540px);
   padding: 26px 18px;
   text-align: center;
   box-shadow: var(--shadow);
@@ -887,9 +891,28 @@ button:disabled {
   display: grid;
   grid-template-columns: 1fr 1fr auto;
   gap: 10px;
+  align-items: center;
   padding: 10px 12px;
   background: oklch(0.98 0.01 225);
   border-radius: 12px;
+}
+
+.admin-summary-row {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.admin-student-row {
+  grid-template-columns: 0.8fr 1fr 1fr 1fr 0.9fr;
+}
+
+.admin-lesson-row,
+.admin-checkin-row {
+  grid-template-columns: 1fr 1.4fr 0.8fr 0.9fr;
+}
+
+.admin-row span {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .admin-row-head {
@@ -906,15 +929,26 @@ button:disabled {
 
 @media (max-width: 520px) {
   .shell {
-    padding: 12px;
+    padding: max(10px, env(safe-area-inset-top)) 10px max(12px, env(safe-area-inset-bottom));
   }
 
   .topbar {
+    align-items: flex-start;
     min-height: 54px;
   }
 
-  .lesson-tabs {
-    grid-template-columns: 1fr;
+  .topbar strong {
+    font-size: 1.04rem;
+  }
+
+  .date-label {
+    font-size: 0.84rem;
+  }
+
+  .stats-pill {
+    min-height: 36px;
+    padding: 0 10px;
+    font-size: 0.9rem;
   }
 
   .brand-strip {
@@ -946,6 +980,17 @@ button:disabled {
     grid-template-columns: 1fr;
   }
 
+  .lesson-switcher {
+    gap: 8px;
+  }
+
+  .lesson-switcher button,
+  .review-picker {
+    min-height: 46px;
+    border-radius: 12px;
+    font-size: 0.95rem;
+  }
+
   .progress-row {
     grid-template-columns: auto 1fr;
   }
@@ -960,6 +1005,7 @@ button:disabled {
   }
 
   .page-nav {
+    grid-template-columns: 1fr 1fr;
     gap: 8px;
   }
 
@@ -969,12 +1015,231 @@ button:disabled {
     gap: 4px;
   }
 
+  .page-nav button:last-child {
+    grid-column: 1 / -1;
+  }
+
   .section-title {
     display: grid;
   }
 
   .history-quick-picks {
     grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (max-width: 430px) {
+  .loading-card,
+  .identify-panel,
+  .study-card,
+  .finish-panel,
+  .share-panel,
+  .calendar-panel,
+  .admin-hero,
+  .admin-section {
+    border-radius: 12px;
+  }
+
+  .brand-strip {
+    align-items: center;
+    gap: 8px;
+    min-height: 72px;
+  }
+
+  .brand-strip img {
+    width: 42px;
+  }
+
+  .school-name strong {
+    font-size: 0.78rem;
+  }
+
+  .class-mark {
+    max-width: 108px;
+  }
+
+  .class-mark span {
+    font-size: 0.92rem;
+  }
+
+  .class-mark strong {
+    font-size: 0.66rem;
+  }
+
+  .identify-panel {
+    gap: 12px;
+    padding: 26px 14px;
+  }
+
+  .identify-panel h1 {
+    font-size: 1.65rem;
+  }
+
+  .identify-form input,
+  .identify-form button,
+  .finish-button {
+    min-height: 52px;
+  }
+
+  .study-area {
+    gap: 10px;
+  }
+
+  .study-card {
+    gap: 12px;
+    min-height: min(52svh, 440px);
+    padding: 18px 12px;
+  }
+
+  .study-card img {
+    max-width: min(100%, 280px);
+    max-height: 145px;
+  }
+
+  .hint {
+    font-size: 0.96rem;
+  }
+
+  .round-action {
+    min-height: 58px;
+    border-radius: 14px;
+  }
+
+  .finish-panel {
+    padding: 12px;
+  }
+
+  .reward {
+    min-height: 0;
+    padding: 22px 12px;
+  }
+
+  .reward img {
+    width: 76px;
+  }
+
+  .reward-badge {
+    min-height: 38px;
+    padding: 7px 12px;
+    font-size: 0.96rem;
+  }
+
+  .reward h2 {
+    font-size: 1.42rem;
+  }
+
+  .reward p,
+  .share-copy-card p {
+    font-size: 0.94rem;
+    line-height: 1.65;
+  }
+
+  .calendar-panel {
+    gap: 10px;
+    padding: 12px;
+  }
+
+  .calendar-weekdays,
+  .calendar-grid {
+    gap: 5px;
+  }
+
+  .calendar-day {
+    min-height: 46px;
+    gap: 2px;
+    padding: 6px 2px;
+    border-radius: 8px;
+  }
+
+  .calendar-day span {
+    font-size: 0.86rem;
+  }
+
+  .calendar-day strong {
+    min-height: 18px;
+    font-size: 0.86rem;
+  }
+
+  .section-title {
+    gap: 10px;
+  }
+
+  .mini-action {
+    width: 100%;
+  }
+
+  .admin-shell {
+    gap: 12px;
+  }
+
+  .admin-hero,
+  .admin-section {
+    padding: 14px;
+  }
+
+  .admin-hero h1 {
+    font-size: 1.35rem;
+    line-height: 1.25;
+  }
+
+  .admin-section-head {
+    display: grid;
+    gap: 8px;
+  }
+
+  .admin-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-row:not(.admin-row-head) {
+    gap: 8px;
+    padding: 12px;
+  }
+
+  .admin-row:not(.admin-row-head) span {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    line-height: 1.35;
+  }
+
+  .admin-row:not(.admin-row-head) span::before {
+    content: attr(data-label);
+    flex: 0 0 auto;
+    color: var(--muted);
+    font-weight: 850;
+  }
+
+  .admin-row-head {
+    display: none;
+  }
+
+  .token-form input,
+  .admin-grid input,
+  .admin-grid select,
+  .admin-grid textarea,
+  .token-form button,
+  .admin-grid button {
+    min-height: 44px;
+  }
+}
+
+@media (max-width: 360px) {
+  .brand-strip {
+    grid-template-columns: auto 1fr;
+  }
+
+  .class-mark {
+    display: none;
+  }
+
+  .calendar-weekdays,
+  .calendar-grid {
+    gap: 4px;
+  }
+
+  .calendar-day {
+    min-height: 42px;
   }
 }
 
