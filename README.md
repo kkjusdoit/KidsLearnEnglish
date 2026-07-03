@@ -152,12 +152,13 @@ bash /Users/linkunkun/Documents/Codex/2026-07-01/zhe/.codex/skills/lesson-video-
 
 详见 [infra/DEPLOYMENT.md](infra/DEPLOYMENT.md)。
 
-如果是每天更新老师视频对应的课程素材，直接看 `infra/DEPLOYMENT.md` 里的“每日课程 SOP（从视频到上线）”。
-
-如果只是发布前端页面，推荐直接用：
+前端发布备忘：
 
 ```bash
+cd /Users/linkunkun/Documents/Codex/2026-07-01/zhe
 API_ORIGIN=http://34.55.229.129.nip.io:8080 npm run deploy:web
 ```
+
+如果是每天更新老师视频对应的课程素材，直接看 `infra/DEPLOYMENT.md` 里的“每日课程 SOP（从视频到上线）”。
 
 # KidsLearnEnglish

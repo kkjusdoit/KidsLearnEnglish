@@ -1,5 +1,23 @@
 # 部署说明
 
+## 发布备忘
+
+前端页面有改动时，只用这一条发布：
+
+```bash
+cd /Users/linkunkun/Documents/Codex/2026-07-01/zhe
+API_ORIGIN=http://34.55.229.129.nip.io:8080 npm run deploy:web
+```
+
+刚刚已经 build 过、只想重发当前 `apps/web/dist` 时：
+
+```bash
+cd /Users/linkunkun/Documents/Codex/2026-07-01/zhe
+SKIP_WEB_BUILD=1 API_ORIGIN=http://34.55.229.129.nip.io:8080 npm run deploy:web
+```
+
+日常不要再用 `npx wrangler pages deploy`。只有提示 refresh token 失效时，才手动跑一次 `npx wrangler login`，然后重新执行上面的发布命令。
+
 ## 当前线上环境
 
 已经部署好的地址：
