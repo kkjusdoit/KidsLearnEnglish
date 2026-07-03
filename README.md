@@ -157,8 +157,7 @@ bash /Users/linkunkun/Documents/Codex/2026-07-01/zhe/.codex/skills/lesson-video-
 如果只是发布前端页面，推荐直接用：
 
 ```bash
-npm run build
-API_ORIGIN=http://34.55.229.129.nip.io:8080 node infra/deploy-pages-direct.mjs apps/web/dist
+API_ORIGIN=http://34.55.229.129.nip.io:8080 npm run deploy:web
 ```
 
 # KidsLearnEnglish

@@ -11,7 +11,8 @@
     "dev": "npm run dev -w @kindergarten-english/api & npm run dev -w @kindergarten-english/web",
     "build": "npm run build --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",
-    "lint": "npm run lint --workspaces --if-present"
+    "lint": "npm run lint --workspaces --if-present",
+    "deploy:web": "bash infra/deploy-pages.sh"
   },
   "engines": {
     "node": ">=20"

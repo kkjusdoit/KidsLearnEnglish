@@ -12,7 +12,7 @@
 
 后台默认不在孩子端页面暴露，访问 `https://kindergarten-english-mvp.pages.dev/?admin=1` 才会显示管理员入口。管理员密钥保存在 `outputs/deployment-secrets.txt`，不要发到班级群。
 
-当前先用 `nip.io` 给 GCE IP 临时提供 hostname，避免 Cloudflare Pages Function 代理裸 IP 时触发 `error code: 1003`。后续拿到 Cloudflare DNS 编辑权限后，把 `english-api.aitifen.cc` 指到 `34.55.229.129`，再把 Pages secret `API_ORIGIN` 改成正式域名即可。
+当前先用 `nip.io` 给 GCE IP 临时提供 hostname，避免 Cloudflare Pages Function 代理裸 IP 时触发 `error code: 1003`。后续拿到 Cloudflare DNS 编辑权限后，把 `english-api.aitifen.cc` 指到 `34.55.229.129`，再用正式域名作为 `API_ORIGIN` 重新发布一次前端即可。
 
 线上 smoke test：
 
@@ -230,8 +230,7 @@ infra/deploy-gce.sh
 2. 再发前端
 
 ```bash
-npm run build
-API_ORIGIN=http://34.55.229.129.nip.io:8080 node infra/deploy-pages-direct.mjs apps/web/dist
+API_ORIGIN=http://34.55.229.129.nip.io:8080 npm run deploy:web
 ```
 
 ### 7. 上线后检查
@@ -257,52 +256,44 @@ curl -I https://kindergarten-english-mvp.pages.dev/media/uploads/2026-07-03/page
 3. 跑 `bash /Users/linkunkun/Documents/Codex/2026-07-01/zhe/.codex/skills/lesson-video-intake/scripts/publish-lesson-remote.sh /abs/path/to/20260703 YYYY-MM-DD`
 4. 用 `curl` 检查 `today` 和 `page-1.mp3`
 
-## 前端极速打包与直连部署（AI 协作首选）
+## 前端快速发布和认证
 
 > [!IMPORTANT]
-> **关于 Node 25 环境下的构建与部署卡死问题**：
-> 在这台机器上运行 `vite build` 或 `wrangler pages deploy` 经常会卡住挂起。
-> 已经实现并验证了一套**极速且稳定**的替代方案：
-> 1. 使用 `esbuild` 快速手动打包。
-> 2. 使用项目内置的直连脚本 `deploy-pages-direct.mjs` 直接请求 Cloudflare Pages API 部署。
+> 日常前端发布不要再用 `npx wrangler pages deploy`。
+> 之前慢和卡的主要原因是 Wrangler CLI 会做安装、登录状态检查、交互式认证和内部重试；项目内的直连发布脚本现在会自己刷新 Cloudflare OAuth token，并且所有 Cloudflare 请求都有超时。
 
-### 1. 手动编译打包 (只需 200~300ms)
-在根目录下运行以下命令，完成清理、静态资源复制、esbuild 极速编译打包并自动生成 `index.html`：
+### 一条命令发布前端
 
 ```bash
-rm -rf apps/web/dist && \
-mkdir -p apps/web/dist/assets && \
-cp apps/web/public/_headers apps/web/dist/_headers && \
-cp apps/web/public/jsyx-brand.png apps/web/public/jsyx-smile.png apps/web/dist/ && \
-./node_modules/.bin/esbuild apps/web/src/main.tsx --bundle --format=esm --splitting --sourcemap --outdir=apps/web/dist/assets --define:import.meta.env.DEV=false --define:import.meta.env.VITE_API_BASE_URL=undefined --log-level=info && \
-cat > apps/web/dist/index.html <<'HTML'
-<!doctype html>
-<html lang="zh-CN">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#f6fbff" />
-    <title>实验小一班英语点读</title>
-    <link rel="stylesheet" href="/assets/main.css" />
-  </head>
-  <body>
-    <div id="root"></div>
-    <script type="module" src="/assets/main.js"></script>
-  </body>
-</html>
-HTML
+API_ORIGIN=http://34.55.229.129.nip.io:8080 npm run deploy:web
 ```
 
-### 2. 直连部署 (秒级上传)
-打包完成后，直接运行以下命令发布前端：
+这条命令会：
+
+- 运行 `npm run build -w @kindergarten-english/web`
+- 调用 `infra/deploy-pages-direct.mjs`
+- 自动读取 `~/.wrangler/config/default.toml`
+- 如果 OAuth token 过期，自动用 `refresh_token` 换新 token 并写回本机配置
+- 增量上传变更文件到 Cloudflare Pages
+- 在 45 秒内暴露网络请求超时，不会长时间无声卡住
+
+如果刚刚已经打过包，只想重发当前 `apps/web/dist`：
 
 ```bash
-API_ORIGIN=http://34.55.229.129.nip.io:8080 node infra/deploy-pages-direct.mjs apps/web/dist
+SKIP_WEB_BUILD=1 API_ORIGIN=http://34.55.229.129.nip.io:8080 npm run deploy:web
 ```
 
-#### 原理解析：
-* **为什么快？**：`esbuild` 用 Go 编写，免去了 Vite/Rollup 庞大的 JavaScript 初始化开销；而 `deploy-pages-direct.mjs` 直接读取本地 `~/.wrangler/config/default.toml` 的 OAuth Token 并通过 REST API 交互，绕过了复杂的 `wrangler` CLI 程序。
-* **增量上传**：直连脚本会自动计算文件哈希，只上传有内容变更的文件。
+认证优先级：
+
+1. 如果环境变量里有 `CF_API_TOKEN` 或 `CLOUDFLARE_API_TOKEN`，优先使用长期 API Token。
+2. 否则使用 `CF_OAUTH_TOKEN` / `CLOUDFLARE_OAUTH_TOKEN`。
+3. 否则读取 Wrangler 本机登录文件 `~/.wrangler/config/default.toml`，必要时自动刷新。
+
+只有当本机没有 `refresh_token` 或 refresh token 已失效时，才需要手动跑一次：
+
+```bash
+npx wrangler login
+```
 
 ## 快速重新部署
 
@@ -385,7 +376,7 @@ curl https://api.你的域名/health
 - Build command: `npm install && npm run build`
 - Build output directory: `dist`
 
-当前 CLI 部署会把 `API_ORIGIN` 写入 Pages secret。注意从 `apps/web` 目录发布，这样 `functions/` 才会被 Wrangler 一起上传：
+当前项目不再依赖 Wrangler CLI 发布。`infra/deploy-pages.sh` 会构建前端并调用 `deploy-pages-direct.mjs`，发布时把 `API_ORIGIN` 写入 Pages Worker bundle：
 
 ```bash
 API_ORIGIN=http://34.55.229.129.nip.io:8080 infra/deploy-pages.sh
