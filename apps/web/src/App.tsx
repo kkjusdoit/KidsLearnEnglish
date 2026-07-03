@@ -54,6 +54,7 @@ function LessonImage({ imageUrl, alt, cacheKey }: { imageUrl: string; alt: strin
       alt={alt}
       loading="eager"
       decoding="async"
+      fetchPriority="high"
       onError={() => {
         if (!usePreview) {
           setUsePreview(true);
@@ -61,6 +62,26 @@ function LessonImage({ imageUrl, alt, cacheKey }: { imageUrl: string; alt: strin
       }}
     />
   );
+}
+
+function preloadLessonImages(lesson: Lesson, startIndex = 0) {
+  const orderedPages = [
+    ...lesson.pages.slice(startIndex),
+    ...lesson.pages.slice(0, startIndex)
+  ];
+
+  for (const page of orderedPages) {
+    if (!page.imageUrl) continue;
+    const cacheKey = `${lesson.id}-${page.id}`;
+
+    const original = new Image();
+    original.decoding = "async";
+    original.src = mediaUrlWithCacheKey(page.imageUrl, cacheKey);
+
+    const preview = new Image();
+    preview.decoding = "async";
+    preview.src = mediaUrlWithCacheKey(previewImagePath(page.imageUrl), `${cacheKey}-preview`);
+  }
 }
 
 function FitText({ text, type }: { text: string; type: "word" | "sentence" }) {
@@ -261,18 +282,7 @@ function App() {
       return;
     }
 
-    const nextPage = lesson.pages[pageIndex + 1];
-    if (!nextPage?.imageUrl) {
-      return;
-    }
-
-    const cacheKey = `${lesson.id}-${nextPage.id}`;
-
-    const original = new Image();
-    original.src = mediaUrlWithCacheKey(nextPage.imageUrl, cacheKey);
-
-    const preview = new Image();
-    preview.src = mediaUrlWithCacheKey(previewImagePath(nextPage.imageUrl), `${cacheKey}-preview`);
+    preloadLessonImages(lesson, pageIndex);
   }, [lesson, pageIndex]);
 
   async function handleIdentify(event: FormEvent<HTMLFormElement>) {

@@ -40,6 +40,16 @@ const historicalCheckinsSchema = z.object({
   carryCheckinDays: z.number().int().min(0).max(365)
 });
 
+function setMediaCacheHeaders(res: { setHeader(name: string, value: string): void }, filePath: string) {
+  const normalizedPath = filePath.split(path.sep).join("/");
+  if (normalizedPath.includes("/uploads/")) {
+    res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+    return;
+  }
+
+  res.setHeader("Cache-Control", "private, no-cache, max-age=0");
+}
+
 function toLesson(row: {
   id: string;
   lesson_date: string;
@@ -248,7 +258,9 @@ export async function buildServer() {
   await app.register(fastifyStatic, {
     root: storageDir,
     prefix: "/media/",
-    decorateReply: false
+    decorateReply: false,
+    cacheControl: false,
+    setHeaders: setMediaCacheHeaders
   });
 
   app.get("/health", async () => ({ ok: true }));
