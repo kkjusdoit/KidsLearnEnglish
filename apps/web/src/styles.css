@@ -27,10 +27,13 @@ body {
   min-height: 100vh;
   min-height: 100dvh;
   overflow-x: hidden;
+  -webkit-tap-highlight-color: transparent;
 }
 
 button,
-input {
+input,
+select,
+textarea {
   font: inherit;
 }
 
@@ -49,7 +52,11 @@ button:disabled {
   min-height: 100vh;
   min-height: 100dvh;
   margin: 0 auto;
-  padding: max(18px, env(safe-area-inset-top)) 18px max(18px, env(safe-area-inset-bottom));
+  padding:
+    max(18px, env(safe-area-inset-top))
+    max(18px, env(safe-area-inset-right))
+    max(18px, env(safe-area-inset-bottom))
+    max(18px, env(safe-area-inset-left));
 }
 
 .centered {
@@ -139,6 +146,7 @@ button:disabled {
   font-size: 0.98rem;
   font-weight: 900;
   line-height: 1.2;
+  text-wrap: balance;
 }
 
 .class-mark {
@@ -162,6 +170,11 @@ button:disabled {
 .topbar strong {
   display: block;
   font-size: 1.2rem;
+  text-wrap: balance;
+}
+
+.topbar > div:first-child {
+  min-width: 0;
 }
 
 .date-label {
@@ -329,8 +342,8 @@ button:disabled {
 }
 
 .study-card img {
-  max-width: min(100%, 320px);
-  max-height: 170px;
+  width: min(100%, 360px);
+  height: clamp(160px, 28svh, 230px);
   object-fit: contain;
 }
 
@@ -373,6 +386,7 @@ button:disabled {
   align-items: center;
   justify-content: center;
   gap: 8px;
+  width: 100%;
   min-height: 66px;
   padding: 0 14px;
   color: white;
@@ -433,6 +447,15 @@ button:disabled {
 
 .page-nav button {
   min-height: 54px;
+}
+
+.page-nav svg,
+.round-action svg,
+.finish-button svg,
+.mini-action svg,
+.share-copy-button svg,
+.lesson-switcher button svg {
+  flex: 0 0 auto;
 }
 
 .finish-panel {
@@ -849,6 +872,7 @@ button:disabled {
 .admin-auth {
   display: grid;
   gap: 10px;
+  width: min(100%, 420px);
 }
 
 .token-form input,
@@ -929,7 +953,11 @@ button:disabled {
 
 @media (max-width: 520px) {
   .shell {
-    padding: max(10px, env(safe-area-inset-top)) 10px max(12px, env(safe-area-inset-bottom));
+    padding:
+      max(10px, env(safe-area-inset-top))
+      max(10px, env(safe-area-inset-right))
+      max(12px, env(safe-area-inset-bottom))
+      max(10px, env(safe-area-inset-left));
   }
 
   .topbar {
@@ -952,12 +980,15 @@ button:disabled {
   }
 
   .brand-strip {
-    min-height: 84px;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    min-height: 0;
     padding: 10px;
   }
 
   .brand-strip img {
     width: 48px;
+    grid-row: span 2;
   }
 
   .school-name span {
@@ -968,8 +999,19 @@ button:disabled {
     font-size: 0.82rem;
   }
 
+  .school-name {
+    margin-right: 0;
+  }
+
   .class-mark span {
     font-size: 1rem;
+  }
+
+  .class-mark {
+    grid-column: 2;
+    justify-items: start;
+    max-width: none;
+    text-align: left;
   }
 
   .class-mark strong {
@@ -1002,6 +1044,29 @@ button:disabled {
 
   .admin-row {
     grid-template-columns: 1fr;
+  }
+
+  .admin-row-head {
+    display: none;
+  }
+
+  .admin-row:not(.admin-row-head) {
+    gap: 8px;
+    padding: 12px;
+  }
+
+  .admin-row:not(.admin-row-head) span {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    line-height: 1.35;
+  }
+
+  .admin-row:not(.admin-row-head) span::before {
+    content: attr(data-label);
+    flex: 0 0 auto;
+    color: var(--muted);
+    font-weight: 850;
   }
 
   .page-nav {
@@ -1043,7 +1108,6 @@ button:disabled {
   .brand-strip {
     align-items: center;
     gap: 8px;
-    min-height: 72px;
   }
 
   .brand-strip img {
@@ -1052,10 +1116,6 @@ button:disabled {
 
   .school-name strong {
     font-size: 0.78rem;
-  }
-
-  .class-mark {
-    max-width: 108px;
   }
 
   .class-mark span {
@@ -1087,13 +1147,13 @@ button:disabled {
 
   .study-card {
     gap: 12px;
-    min-height: min(52svh, 440px);
+    min-height: min(54svh, 460px);
     padding: 18px 12px;
   }
 
   .study-card img {
-    max-width: min(100%, 280px);
-    max-height: 145px;
+    width: min(100%, 300px);
+    height: clamp(140px, 26svh, 190px);
   }
 
   .hint {
@@ -1145,7 +1205,7 @@ button:disabled {
   }
 
   .calendar-day {
-    min-height: 46px;
+    min-height: 48px;
     gap: 2px;
     padding: 6px 2px;
     border-radius: 8px;
@@ -1191,29 +1251,6 @@ button:disabled {
     grid-template-columns: 1fr;
   }
 
-  .admin-row:not(.admin-row-head) {
-    gap: 8px;
-    padding: 12px;
-  }
-
-  .admin-row:not(.admin-row-head) span {
-    display: flex;
-    justify-content: space-between;
-    gap: 12px;
-    line-height: 1.35;
-  }
-
-  .admin-row:not(.admin-row-head) span::before {
-    content: attr(data-label);
-    flex: 0 0 auto;
-    color: var(--muted);
-    font-weight: 850;
-  }
-
-  .admin-row-head {
-    display: none;
-  }
-
   .token-form input,
   .admin-grid input,
   .admin-grid select,
@@ -1225,21 +1262,13 @@ button:disabled {
 }
 
 @media (max-width: 360px) {
-  .brand-strip {
-    grid-template-columns: auto 1fr;
-  }
-
-  .class-mark {
-    display: none;
-  }
-
   .calendar-weekdays,
   .calendar-grid {
-    gap: 4px;
+    gap: 3px;
   }
 
   .calendar-day {
-    min-height: 42px;
+    min-height: 44px;
   }
 }
 
