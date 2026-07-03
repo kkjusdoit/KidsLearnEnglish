@@ -26,6 +26,8 @@ import {
 } from "./api";
 import { AdminPanel } from "./admin";
 
+const challengeStartDate = "2026-06-29";
+
 function previewImagePath(url: string) {
   return url.replace(/(\.[a-z0-9]+)(\?.*)?$/i, ".preview.jpg$2");
 }
@@ -99,6 +101,24 @@ function formatLessonDate(date: string) {
     day: "numeric",
     weekday: "short"
   }).format(parsed);
+}
+
+function formatFullDate(date: string) {
+  const parsed = new Date(`${date}T12:00:00+08:00`);
+  return new Intl.DateTimeFormat("zh-CN", {
+    timeZone: "Asia/Shanghai",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+    weekday: "long"
+  }).format(parsed);
+}
+
+function challengeDayFor(date: string) {
+  const start = new Date(`${challengeStartDate}T12:00:00+08:00`).getTime();
+  const current = new Date(`${date}T12:00:00+08:00`).getTime();
+  const day = Math.floor((current - start) / 86_400_000) + 1;
+  return Math.max(day, 1);
 }
 
 function dateKeyInShanghai(date = new Date()) {
@@ -213,6 +233,9 @@ function App() {
   const isLastPage = Boolean(lesson && pageIndex === lesson.pages.length - 1);
   const checkedDateSet = useMemo(() => new Set(stats?.checkedDates ?? []), [stats?.checkedDates]);
   const todayKey = dateKeyInShanghai();
+  const todayText = formatFullDate(todayKey);
+  const challengeDay = challengeDayFor(todayKey);
+  const challengeDayText = formatCheckinDay(challengeDay);
   const calendarDays = useMemo(() => {
     if (!stats) return [];
     return buildCalendarDays(stats.campaignStartDate, stats.campaignEndDate);
@@ -373,7 +396,16 @@ function App() {
       <main className="shell centered">
         <div className="loading-card">
           {loadingLesson ? (
-            "正在准备今天的英语小任务..."
+            <>
+              <span className="loading-date">今天是 {todayText}</span>
+              <h1 className="loading-title">开启挑战打卡第{challengeDayText}天</h1>
+              <p className="loading-note">小耳朵准备好，老师的声音马上到。今天也一起听一听、说出口，完成实验小一班的小小英文挑战。</p>
+              <span className="loading-dots" aria-label="正在加载">
+                <i />
+                <i />
+                <i />
+              </span>
+            </>
           ) : (
             <>
               <strong>{lessonLoadError ?? "课程还没有准备好"}</strong>
