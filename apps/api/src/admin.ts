@@ -31,6 +31,13 @@ export const lessonPageUpsertSchema = z.object({
 });
 
 export async function getAdminDashboard() {
+  const today = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Shanghai",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  }).format(new Date());
+
   const [students, lessons, checkins] = await Promise.all([
     query(
       `
@@ -42,16 +49,27 @@ export async function getAdminDashboard() {
           s.active,
           s.carry_checkin_days,
           s.historical_checkins_confirmed_at::text as historical_checkins_confirmed_at,
-          count(sc.id)::int as total_checkin_days
+          count(sc.id)::int as total_checkin_days,
+          coalesce(bool_or(sda.id is not null), false) as opened_today,
+          coalesce(max(sda.open_count), 0)::int as open_count_today,
+          max(sda.last_opened_at)::text as last_opened_at,
+          coalesce(bool_or(scd.checkin_date is not null and scd.checked = true), false) as checked_today
         from students s
         left join student_checkin_days sc
           on sc.student_id = s.id
           and sc.checked = true
+        left join student_daily_activity sda
+          on sda.student_id = s.id
+          and sda.activity_date = $1::date
+        left join student_checkin_days scd
+          on scd.student_id = s.id
+          and scd.checkin_date = $1::date
         group by s.id
         order by
           case when s.student_id ~ '^[0-9]+$' then s.student_id::int end nulls last,
           s.student_id asc
-      `
+      `,
+      [today]
     ),
     query(
       `
@@ -77,6 +95,11 @@ export async function getAdminDashboard() {
   ]);
 
   return {
+    summary: {
+      totalStudents: students.rows.length,
+      openedToday: students.rows.filter((row) => row.opened_today).length,
+      checkedToday: students.rows.filter((row) => row.checked_today).length
+    },
     students: students.rows.map((row) => ({
       id: row.id,
       studentId: row.student_id,
@@ -85,7 +108,11 @@ export async function getAdminDashboard() {
       active: row.active,
       carryCheckinDays: row.carry_checkin_days,
       historicalCheckinsConfirmed: Boolean(row.historical_checkins_confirmed_at),
-      totalCheckinDays: row.total_checkin_days
+      totalCheckinDays: row.total_checkin_days,
+      openedToday: Boolean(row.opened_today),
+      checkedToday: Boolean(row.checked_today),
+      openCountToday: row.open_count_today,
+      lastOpenedAt: row.last_opened_at
     })),
     lessons: lessons.rows.map((row) => ({
       id: row.id,

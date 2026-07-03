@@ -161,5 +161,55 @@ export const migrations = [
       create unique index if not exists student_checkin_days_student_date_key
         on student_checkin_days (student_id, checkin_date);
     `
+  },
+  {
+    name: "005_student_daily_activity",
+    sql: `
+      create table if not exists student_daily_activity (
+        id uuid primary key default gen_random_uuid(),
+        student_id uuid not null references students(id) on delete cascade,
+        activity_date date not null,
+        first_opened_at timestamptz not null default now(),
+        last_opened_at timestamptz not null default now(),
+        open_count integer not null default 1,
+        unique (student_id, activity_date)
+      );
+
+      alter table student_daily_activity
+        add column if not exists first_opened_at timestamptz;
+
+      alter table student_daily_activity
+        add column if not exists last_opened_at timestamptz;
+
+      alter table student_daily_activity
+        add column if not exists open_count integer;
+
+      update student_daily_activity
+      set
+        first_opened_at = coalesce(first_opened_at, now()),
+        last_opened_at = coalesce(last_opened_at, now()),
+        open_count = coalesce(open_count, 1)
+      where first_opened_at is null
+        or last_opened_at is null
+        or open_count is null;
+
+      alter table student_daily_activity
+        alter column first_opened_at set default now();
+
+      alter table student_daily_activity
+        alter column last_opened_at set default now();
+
+      alter table student_daily_activity
+        alter column open_count set default 1;
+
+      alter table student_daily_activity
+        alter column first_opened_at set not null;
+
+      alter table student_daily_activity
+        alter column last_opened_at set not null;
+
+      alter table student_daily_activity
+        alter column open_count set not null;
+    `
   }
 ] as const;

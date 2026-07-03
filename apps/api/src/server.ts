@@ -501,6 +501,19 @@ export async function buildServer() {
     }
 
     const row = student.rows[0];
+    const todayKey = dateKeyInShanghai();
+    await query(
+      `
+        insert into student_daily_activity (student_id, activity_date, first_opened_at, last_opened_at, open_count)
+        values ($1, $2::date, now(), now(), 1)
+        on conflict (student_id, activity_date)
+        do update set
+          last_opened_at = now(),
+          open_count = student_daily_activity.open_count + 1
+      `,
+      [row.id, todayKey]
+    );
+
     return {
       mode: "student",
       token: signStudentToken(row),

@@ -459,7 +459,7 @@
 
   <header>
     <div>
-      <h1>🍒 KidsLearnEnglish 素材一体化录入助手</h1>
+      <h1>🍒 KidsLearnEnglish 素材一体化录入助手 <span id="helpTipBtn" style="cursor: pointer; font-size: 13px; margin-left: 8px; padding: 2px 8px; border-radius: 12px; background: oklch(62% 0.16 230 / 0.15); border: 1px solid var(--accent); color: var(--accent); font-weight: 500; display: inline-flex; align-items: center; gap: 4px; vertical-align: middle;" title="点击查看推荐使用顺序">💡 推荐操作顺序</span></h1>
       <p class="subtitle">音视频提取分割 · 图片智能裁剪 · 单词对齐一键导出</p>
     </div>
     <div style="display: flex; gap: 12px; align-items: center;">
@@ -611,6 +611,44 @@ cherry
   <div class="status-bar">
     <div id="statusMsg">准备就绪</div>
     <div>2026 KidsLearnEnglish Intake Pro · Native Frontend</div>
+  </div>
+
+  <!-- Help Modal Overlay -->
+  <div id="helpModal" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.7); backdrop-filter: blur(10px); z-index: 9999; align-items: center; justify-content: center; padding: 24px;">
+    <div style="background: var(--panel); border: 1px solid var(--panel-border); border-radius: 16px; box-shadow: var(--shadow); max-width: 500px; width: 100%; display: flex; flex-direction: column; overflow: hidden;">
+      <div class="panel-header" style="font-size: 16px; font-weight: 700; padding: 16px 20px;">
+        <span>💡 推荐的高效操作顺序</span>
+        <span id="closeHelpBtn" style="cursor: pointer; font-size: 18px; color: var(--muted);">&times;</span>
+      </div>
+      <div style="padding: 20px; display: flex; flex-direction: column; gap: 16px; font-size: 14px; line-height: 1.6; color: var(--ink);">
+        <div style="display: flex; gap: 12px;">
+          <div style="background: var(--accent); width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; flex-shrink: 0; color: white;">1</div>
+          <div><strong>导入视频</strong>：导入您的 MP4 视频，拉进度条找到最清晰的教材页面帧。</div>
+        </div>
+        <div style="display: flex; gap: 12px;">
+          <div style="background: var(--accent); width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; flex-shrink: 0; color: white;">2</div>
+          <div><strong>提取背景</strong>：点击左上角 <strong>“📷 截取当前帧作为教材背景”</strong> 按钮，大图会直接显示在画板上。</div>
+        </div>
+        <div style="display: flex; gap: 12px;">
+          <div style="background: var(--accent); width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; flex-shrink: 0; color: white;">3</div>
+          <div><strong>智能切分</strong>：点击 <strong>“⏱️ 智能静音切分音频”</strong> 自动分析视频发音块（通常会切出很多段）。</div>
+        </div>
+        <div style="display: flex; gap: 12px;">
+          <div style="background: var(--accent); width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; flex-shrink: 0; color: white;">4</div>
+          <div><strong>两两合并</strong>：如果单词读了多遍，点击 <strong>“👥 两两合并”</strong> 按钮，列表会瞬间智能合并好段落（例如精简为 4 行）。</div>
+        </div>
+        <div style="display: flex; gap: 12px;">
+          <div style="background: var(--accent); width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; flex-shrink: 0; color: white;">5</div>
+          <div><strong>连续画框</strong>：直接去右侧大图上，<b>依次按顺序画出 4 个单词框</b>。系统会自动按 1、2、3、4 匹配分配，无需任何多余点击！</div>
+        </div>
+        <div style="margin-top: 8px; font-size: 12px; color: var(--muted); border-top: 1px dashed var(--panel-border); padding-top: 12px;">
+          ⌨️ <strong>小贴士</strong>：如果裁剪框画错了，在列表选中它，按下键盘的 <strong>Backspace</strong> 或 <strong>Delete</strong> 键即可清除该行的切片选区，重新绘制即可。
+        </div>
+      </div>
+      <div style="padding: 12px 20px; background: oklch(22% 0.02 240 / 0.4); border-top: 1px solid var(--panel-border); display: flex; justify-content: flex-end;">
+        <button id="gotHelpBtn" class="btn primary" style="min-height: 32px;">我知道了</button>
+      </div>
+    </div>
   </div>
 
   <script>
@@ -1798,7 +1836,12 @@ cherry
         return;
       }
 
-      if (confirm(`智能检测到 ${segments.length} 个音段，是否替换当前段落列表？`)) {
+      const hasDrawnBoxes = state.items.some(it => it.box);
+      const warnMsg = hasDrawnBoxes 
+        ? `⚠️ 警告：检测到 ${segments.length} 个音段。替换列表将清除您已画好的图片切片框和文本！\n是否确认继续替换？`
+        : `智能检测到 ${segments.length} 个音段，是否替换当前段落列表？`;
+
+      if (confirm(warnMsg)) {
         state.items = [];
         segments.forEach((seg) => {
           const paddedStart = Math.max(0, seg.start - 0.15);
@@ -1980,7 +2023,12 @@ cherry
         return;
       }
 
-      if (confirm(`智能检测到 ${shrinkedBoxes.length} 个卡片切片，是否替换？`)) {
+      const hasDrawnBoxes = state.items.some(it => it.box);
+      const warnMsg = hasDrawnBoxes 
+        ? `⚠️ 警告：这将自动覆盖您现有所有段落的图片切片框！\n是否确认替换？`
+        : `智能检测到 ${shrinkedBoxes.length} 个卡片切片，是否替换？`;
+
+      if (confirm(warnMsg)) {
         while (state.items.length < shrinkedBoxes.length) {
           let start = 0;
           if (state.items.length > 0) {
@@ -2213,6 +2261,26 @@ cherry
     window.addEventListener('resize', () => {
       resizeWaveCanvas();
       drawWaveform();
+    });
+
+    // Help Modal Logic
+    const helpModal = document.getElementById('helpModal');
+    const helpTipBtn = document.getElementById('helpTipBtn');
+    const closeHelpBtn = document.getElementById('closeHelpBtn');
+    const gotHelpBtn = document.getElementById('gotHelpBtn');
+
+    helpTipBtn.addEventListener('click', () => {
+      helpModal.style.display = 'flex';
+    });
+
+    const closeHelp = () => {
+      helpModal.style.display = 'none';
+    };
+
+    closeHelpBtn.addEventListener('click', closeHelp);
+    gotHelpBtn.addEventListener('click', closeHelp);
+    helpModal.addEventListener('click', (e) => {
+      if (e.target === helpModal) closeHelp();
     });
 
   </script>

@@ -7,7 +7,9 @@ import type {
   AdminStudent
 } from "@kindergarten-english/shared";
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8080";
+const API_BASE =
+  import.meta.env.VITE_API_BASE_URL ??
+  (import.meta.env.DEV ? "http://localhost:8080" : "");
 
 async function adminRequest<T>(path: string, token: string, init: RequestInit = {}): Promise<T> {
   const response = await fetch(`${API_BASE}${path}`, {
@@ -87,48 +89,64 @@ export function AdminPanel() {
   async function login(event: FormEvent) {
     event.preventDefault();
     setError(null);
-    await refresh(token);
+    try {
+      await refresh(token);
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "登录失败");
+    }
   }
 
   async function loginWithSecret(event: FormEvent) {
     event.preventDefault();
     setError(null);
-    const result = await adminRequest<{ token: string }>("/api/admin/login", "", {
-      method: "POST",
-      body: JSON.stringify({ secret })
-    });
-    setToken(result.token);
-    await refresh(result.token);
+    try {
+      const result = await adminRequest<{ token: string }>("/api/admin/login", "", {
+        method: "POST",
+        body: JSON.stringify({ secret })
+      });
+      setToken(result.token);
+      await refresh(result.token);
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "登录失败");
+    }
   }
 
   async function saveStudent() {
     setError(null);
-    const carryCheckinDays = studentForm.carryCheckinDays.trim();
-    await adminRequest("/api/admin/students", token, {
-      method: "POST",
-      body: JSON.stringify({
-        studentId: studentForm.studentId,
-        name: studentForm.name,
-        displayName: studentForm.displayName,
-        ...(carryCheckinDays ? { carryCheckinDays: Number(carryCheckinDays) } : {})
-      })
-    });
-    await refresh(token);
-    setStudentForm({ studentId: "", name: "", displayName: "", carryCheckinDays: "" });
+    try {
+      const carryCheckinDays = studentForm.carryCheckinDays.trim();
+      await adminRequest("/api/admin/students", token, {
+        method: "POST",
+        body: JSON.stringify({
+          studentId: studentForm.studentId,
+          name: studentForm.name,
+          displayName: studentForm.displayName,
+          ...(carryCheckinDays ? { carryCheckinDays: Number(carryCheckinDays) } : {})
+        })
+      });
+      await refresh(token);
+      setStudentForm({ studentId: "", name: "", displayName: "", carryCheckinDays: "" });
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "保存学生失败");
+    }
   }
 
   async function saveLesson() {
     setError(null);
-    const lesson = await adminRequest<{ id: string }>("/api/admin/lessons", token, {
-      method: "POST",
-      body: JSON.stringify(lessonForm)
-    });
-    const pages = JSON.parse(pageDraft || "[]") as unknown[];
-    await adminRequest(`/api/admin/lessons/${lesson.id}/pages`, token, {
-      method: "POST",
-      body: JSON.stringify({ pages })
-    });
-    await refresh(token);
+    try {
+      const lesson = await adminRequest<{ id: string }>("/api/admin/lessons", token, {
+        method: "POST",
+        body: JSON.stringify(lessonForm)
+      });
+      const pages = JSON.parse(pageDraft || "[]") as unknown[];
+      await adminRequest(`/api/admin/lessons/${lesson.id}/pages`, token, {
+        method: "POST",
+        body: JSON.stringify({ pages })
+      });
+      await refresh(token);
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "保存课程失败");
+    }
   }
 
   return (
@@ -153,6 +171,18 @@ export function AdminPanel() {
       {error ? <div className="admin-error">{error}</div> : null}
 
       <Section title="学生名单">
+        <div className="admin-table">
+          <div className="admin-row admin-row-head">
+            <span>总学生</span>
+            <span>今日打开</span>
+            <span>今日打卡</span>
+          </div>
+          <div className="admin-row">
+            <span>{dashboard?.summary.totalStudents ?? 0}</span>
+            <span>{dashboard?.summary.openedToday ?? 0}</span>
+            <span>{dashboard?.summary.checkedToday ?? 0}</span>
+          </div>
+        </div>
         <div className="admin-grid">
           <input placeholder="学号" value={studentForm.studentId} onChange={(e) => setStudentForm((s) => ({ ...s, studentId: e.target.value }))} />
           <input placeholder="姓名" value={studentForm.name} onChange={(e) => setStudentForm((s) => ({ ...s, name: e.target.value }))} />
@@ -170,12 +200,16 @@ export function AdminPanel() {
           <div className="admin-row admin-row-head">
             <span>学号</span>
             <span>姓名</span>
+            <span>今日打开</span>
+            <span>今日打卡</span>
             <span>打卡天数</span>
           </div>
           {dashboard?.students.map((student: AdminStudent) => (
             <div key={student.id} className="admin-row">
               <span>{student.studentId}</span>
               <span>{student.name}</span>
+              <span>{student.openedToday ? `已打开${student.openCountToday > 1 ? `(${student.openCountToday})` : ""}` : "未打开"}</span>
+              <span>{student.checkedToday ? "已打卡" : "未打卡"}</span>
               <span>{student.totalCheckinDays} 天</span>
             </div>
           ))}

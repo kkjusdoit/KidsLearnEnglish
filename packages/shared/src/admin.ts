@@ -15,6 +15,10 @@ export type AdminStudent = {
   carryCheckinDays: number;
   historicalCheckinsConfirmed: boolean;
   totalCheckinDays: number;
+  openedToday: boolean;
+  checkedToday: boolean;
+  openCountToday: number;
+  lastOpenedAt?: string | null;
 };
 
 export type AdminLessonPage = {
@@ -41,6 +45,11 @@ export type AdminCheckin = {
 };
 
 export type AdminDashboard = {
+  summary: {
+    totalStudents: number;
+    openedToday: number;
+    checkedToday: number;
+  };
   students: AdminStudent[];
   lessons: AdminLessonSummary[];
   checkins: AdminCheckin[];
