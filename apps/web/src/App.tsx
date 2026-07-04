@@ -3,6 +3,7 @@ import type { FormEvent } from "react";
 import {
   ArrowLeft,
   ArrowRight,
+  Brain,
   CalendarDays,
   Copy,
   Flower2,
@@ -11,6 +12,7 @@ import {
   Play,
   RotateCcw,
   Sparkles,
+  Volume2,
   UserRound
 } from "lucide-react";
 import type { IdentityResponse, Lesson, LessonSummary, StudentStats } from "@kindergarten-english/shared";
@@ -28,6 +30,24 @@ import { AdminPanel } from "./admin";
 
 const siteTitle = "京师幼学实验小一班英语打卡网站";
 const challengeStartDate = "2026-06-29";
+
+type QuizPage = {
+  id: string;
+  lessonId: string;
+  order: number;
+  type: "word";
+  text: string;
+  audioUrl: string;
+  imageUrl: string;
+  lessonDate: string;
+  lessonTitle: string;
+};
+
+type QuizQuestion = {
+  id: string;
+  prompt: QuizPage;
+  options: QuizPage[];
+};
 
 function previewImagePath(url: string) {
   return url.replace(/(\.[a-z0-9]+)(\?.*)?$/i, ".preview.jpg$2");
@@ -180,11 +200,67 @@ function buildCalendarDays(startDate: string, endDate: string) {
   return days;
 }
 
+function shuffleItems<T>(items: T[]) {
+  const next = [...items];
+  for (let index = next.length - 1; index > 0; index -= 1) {
+    const swapIndex = Math.floor(Math.random() * (index + 1));
+    [next[index], next[swapIndex]] = [next[swapIndex], next[index]];
+  }
+  return next;
+}
+
+function uniqueQuizPages(pages: QuizPage[]) {
+  const seen = new Set<string>();
+  return pages.filter((page) => {
+    const key = page.text.trim().toLowerCase();
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function lessonToQuizPages(lesson: Lesson): QuizPage[] {
+  return lesson.pages
+    .filter((page) => page.type === "word" && page.imageUrl)
+    .map((page) => ({
+      id: page.id,
+      lessonId: page.lessonId,
+      order: page.order,
+      type: "word" as const,
+      text: page.text,
+      audioUrl: page.audioUrl,
+      imageUrl: page.imageUrl ?? "",
+      lessonDate: lesson.date,
+      lessonTitle: lesson.title
+    }));
+}
+
+function buildQuizQuestions(pages: QuizPage[], desiredCount: number) {
+  const pool = uniqueQuizPages(pages);
+  if (pool.length < 2) {
+    return [];
+  }
+
+  const prompts = shuffleItems(pool).slice(0, Math.min(desiredCount, pool.length));
+  return prompts.map((prompt) => {
+    const distractors = shuffleItems(pool.filter((candidate) => candidate.id !== prompt.id)).slice(
+      0,
+      Math.min(3, pool.length - 1)
+    );
+    return {
+      id: `${prompt.lessonDate}-${prompt.id}`,
+      prompt,
+      options: shuffleItems([prompt, ...distractors])
+    };
+  });
+}
+
 function App() {
   const [identifier, setIdentifier] = useState("");
   const [identity, setIdentity] = useState<IdentityResponse | null>(null);
   const [lesson, setLesson] = useState<Lesson | null>(null);
   const [lessons, setLessons] = useState<LessonSummary[]>([]);
+  const [activityMode, setActivityMode] = useState<"study" | "quiz">("study");
   const [lessonLoadError, setLessonLoadError] = useState<string | null>(null);
   const [loadingLesson, setLoadingLesson] = useState(true);
   const [lessonMode, setLessonMode] = useState<"today" | "review">("today");
@@ -197,6 +273,17 @@ function App() {
   const [savingDate, setSavingDate] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [quizLoading, setQuizLoading] = useState(false);
+  const [quizLoadingMode, setQuizLoadingMode] = useState<"current" | "all" | null>(null);
+  const [quizMode, setQuizMode] = useState<"current" | "all">("current");
+  const [quizLabel, setQuizLabel] = useState("");
+  const [quizQuestions, setQuizQuestions] = useState<QuizQuestion[]>([]);
+  const [quizIndex, setQuizIndex] = useState(0);
+  const [quizCorrectCount, setQuizCorrectCount] = useState(0);
+  const [quizChoiceId, setQuizChoiceId] = useState<string | null>(null);
+  const [quizAnswered, setQuizAnswered] = useState(false);
+  const [quizResult, setQuizResult] = useState<"correct" | "wrong" | null>(null);
+  const [allQuizPages, setAllQuizPages] = useState<QuizPage[] | null>(null);
   const showAdmin = new URLSearchParams(window.location.search).get("admin") === "1";
   const [mode, setMode] = useState<"student" | "admin">(showAdmin ? "admin" : "student");
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -276,6 +363,10 @@ function App() {
   const shareText = `我是京师幼学蓝湾幼儿园小朋友 ${studentName}，👊👊挑战英文助力打卡第${shareDayText}天。说出口，刷到爆，连续打卡最闪耀！ Love English, From JSYX！🌟`;
   const finishedCurrentLesson = Boolean(lesson && checkedDateSet.has(lesson.date));
   const rewardMessage = checkinReward ?? stats?.latestRewardText ?? "今天的英语打卡完成啦！";
+  const currentQuizQuestion = quizQuestions[quizIndex];
+  const quizFinished = activityMode === "quiz" && quizQuestions.length > 0 && quizIndex >= quizQuestions.length;
+  const quizTotal = quizQuestions.length;
+  const quizProgressText = quizFinished ? `${quizTotal} / ${quizTotal}` : `${quizIndex + 1} / ${quizTotal}`;
 
   useEffect(() => {
     if (!lesson) {
@@ -300,6 +391,7 @@ function App() {
       if (result.mode === "guest") {
         setMessage("没有找到这个姓名或学号，已进入游客模式。游客可以点读，但不能正式打卡。");
       }
+      setActivityMode("study");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "识别失败");
     } finally {
@@ -364,6 +456,103 @@ function App() {
     const nextPage = lesson.pages[boundedIndex];
     setPageIndex(boundedIndex);
     void playTeacherAudio(nextPage);
+  }
+
+  function resetQuizState() {
+    setQuizQuestions([]);
+    setQuizIndex(0);
+    setQuizCorrectCount(0);
+    setQuizChoiceId(null);
+    setQuizAnswered(false);
+    setQuizResult(null);
+  }
+
+  function exitQuiz() {
+    setActivityMode("study");
+    resetQuizState();
+  }
+
+  async function loadAllQuizPages() {
+    if (allQuizPages) {
+      return allQuizPages;
+    }
+
+    const publishedLessons = lessons.filter((item) => item.status === "published");
+    const lessonDetails = await Promise.all(publishedLessons.map((item) => getLessonByDate(item.date)));
+    const pages = uniqueQuizPages(lessonDetails.flatMap((item) => lessonToQuizPages(item)));
+    setAllQuizPages(pages);
+    return pages;
+  }
+
+  async function startQuiz(mode: "current" | "all") {
+    if (!lesson) return;
+    setQuizLoading(true);
+    setQuizLoadingMode(mode);
+    setMessage(null);
+    try {
+      setQuizMode(mode);
+      const quizPages =
+        mode === "current"
+          ? lessonToQuizPages(lesson)
+          : await loadAllQuizPages();
+      const desiredCount = mode === "current" ? quizPages.length : Math.min(8, quizPages.length);
+      const questions = buildQuizQuestions(quizPages, desiredCount);
+      if (questions.length === 0) {
+        setMessage("题目还不够，至少要有两张不同的单词卡才能开始测试。");
+        return;
+      }
+
+      setQuizMode(mode);
+      setQuizLabel(mode === "current" ? `${formatLessonDate(lesson.date)} 小测试` : "全部单词小测试");
+      setQuizQuestions(questions);
+      setQuizIndex(0);
+      setQuizCorrectCount(0);
+      setQuizChoiceId(null);
+      setQuizAnswered(false);
+      setQuizResult(null);
+      setActivityMode("quiz");
+      void playTeacherAudio(questions[0].prompt, { showBlockedMessage: false });
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "加载测试题失败");
+    } finally {
+      setQuizLoading(false);
+      setQuizLoadingMode(null);
+    }
+  }
+
+  function advanceQuiz(nextIndex: number) {
+    if (nextIndex >= quizQuestions.length) {
+      setQuizIndex(quizQuestions.length);
+      setQuizAnswered(false);
+      setQuizChoiceId(null);
+      setQuizResult(null);
+      return;
+    }
+
+    const nextQuestion = quizQuestions[nextIndex];
+    setQuizIndex(nextIndex);
+    setQuizAnswered(false);
+    setQuizChoiceId(null);
+    setQuizResult(null);
+    void playTeacherAudio(nextQuestion.prompt, { showBlockedMessage: false });
+  }
+
+  function answerQuiz(option: QuizPage) {
+    if (!currentQuizQuestion || quizAnswered) {
+      return;
+    }
+
+    const correct = option.id === currentQuizQuestion.prompt.id;
+    setQuizChoiceId(option.id);
+    setQuizAnswered(true);
+    setQuizResult(correct ? "correct" : "wrong");
+    if (correct) {
+      setQuizCorrectCount((value) => value + 1);
+    }
+
+    window.setTimeout(() => {
+      advanceQuiz(quizIndex + 1);
+    }, 1350);
   }
 
   async function completeCheckin() {
@@ -572,90 +761,219 @@ function App() {
             </section>
           ) : (
             <section className="study-area">
-              <div className="progress-row">
-                <span>
-                  {pageIndex + 1} / {lesson.pages.length}
-                </span>
-                <div className="progress-track" aria-hidden>
-                  <div style={{ width: `${((pageIndex + 1) / lesson.pages.length) * 100}%` }} />
-                </div>
-                <label className="auto-toggle">
-                  <input type="checkbox" checked={autoMode} onChange={(event) => setAutoMode(event.target.checked)} />
-                  自动翻页
-                </label>
-              </div>
+              {activityMode === "study" ? (
+                <>
+                  <div className="progress-row">
+                    <span>
+                      {pageIndex + 1} / {lesson.pages.length}
+                    </span>
+                    <div className="progress-track" aria-hidden>
+                      <div style={{ width: `${((pageIndex + 1) / lesson.pages.length) * 100}%` }} />
+                    </div>
+                    <label className="auto-toggle">
+                      <input type="checkbox" checked={autoMode} onChange={(event) => setAutoMode(event.target.checked)} />
+                      自动翻页
+                    </label>
+                  </div>
 
-              {currentPage ? (
-                <article className="study-card">
-                  {currentPage.imageUrl ? (
-                    <LessonImage
-                      key={`${lesson.id}-${currentPage.id}-${currentPage.imageUrl}`}
-                      imageUrl={currentPage.imageUrl}
-                      alt={currentPage.text}
-                      cacheKey={`${lesson.id}-${currentPage.id}`}
-                    />
+                  {currentPage ? (
+                    <article className="study-card">
+                      {currentPage.imageUrl ? (
+                        <LessonImage
+                          key={`${lesson.id}-${currentPage.id}-${currentPage.imageUrl}`}
+                          imageUrl={currentPage.imageUrl}
+                          alt={currentPage.text}
+                          cacheKey={`${lesson.id}-${currentPage.id}`}
+                        />
+                      ) : null}
+                      <FitText text={currentPage.text} type={currentPage.type} />
+                      <p className="hint">{currentPage.type === "word" ? "Listen and repeat" : "Read after the teacher"}</p>
+
+                      <div className="primary-actions">
+                        <button className="round-action" onClick={() => void playTeacherAudio()}>
+                          {isPlaying ? <Pause /> : <Play />}
+                          <span>{isPlaying ? "重新播放" : "听老师读"}</span>
+                        </button>
+                      </div>
+                    </article>
                   ) : null}
-                  <FitText text={currentPage.text} type={currentPage.type} />
-                  <p className="hint">{currentPage.type === "word" ? "Listen and repeat" : "Read after the teacher"}</p>
 
-                  <div className="primary-actions">
-                    <button className="round-action" onClick={() => void playTeacherAudio()}>
-                      {isPlaying ? <Pause /> : <Play />}
-                      <span>{isPlaying ? "重新播放" : "听老师读"}</span>
+                  <div className="page-nav">
+                    <button disabled={pageIndex === 0} onClick={() => goToPage(pageIndex - 1)}>
+                      <ArrowLeft />
+                      上一页
+                    </button>
+                    <button
+                      disabled={pageIndex === lesson.pages.length - 1}
+                      onClick={() => goToPage(pageIndex + 1)}
+                    >
+                      下一页
+                      <ArrowRight />
+                    </button>
+                    <button onClick={restartLesson}>
+                      <RotateCcw />
+                      再来一遍
                     </button>
                   </div>
-                </article>
+                </>
               ) : null}
 
-              <div className="page-nav">
-                <button disabled={pageIndex === 0} onClick={() => goToPage(pageIndex - 1)}>
-                  <ArrowLeft />
-                  上一页
-                </button>
-                <button
-                  disabled={pageIndex === lesson.pages.length - 1}
-                  onClick={() => goToPage(pageIndex + 1)}
-                >
-                  下一页
-                  <ArrowRight />
-                </button>
-                <button onClick={restartLesson}>
-                  <RotateCcw />
-                  再来一遍
-                </button>
-              </div>
-
-              <section className="finish-panel">
-                {identity.mode === "guest" ? (
-                  <p>游客模式可以点读体验。输入本班姓名或学号后，就能正式打卡。</p>
-                ) : finishedCurrentLesson ? (
-                  <div className="reward">
-                    <img src="/jsyx-smile.png" alt="" />
-                    <span className="reward-badge">完成第 {formatCheckinDay(stats?.totalCheckins ?? shareDay)} 天打卡</span>
-                    <h2>恭喜 {studentName}</h2>
-                    <p>{shareText}</p>
-                    <strong>{rewardMessage}</strong>
-                    <button type="button" className="share-copy-button" onClick={() => void copyShareText()}>
-                      <Copy />
-                      复制打卡文案
-                    </button>
+              <section className="quiz-launch-panel">
+                <div className="section-title">
+                  <div>
+                    <p>小测试</p>
+                    <strong>听英文声音，选出正确单词</strong>
                   </div>
-                ) : (
-                  <div className="finish-cta">
-                    <button className="finish-button" onClick={() => void completeCheckin()} disabled={!isLastPage || loading}>
-                      <Sparkles />
-                      {isLastPage
-                        ? loading
-                          ? "打卡中..."
-                          : isTodayLesson
-                            ? "完成今日打卡"
-                            : "完成复习打卡"
-                        : "翻到最后一页即可打卡"}
-                    </button>
-                    <p>只要完成最后一页，就可以打卡。</p>
-                  </div>
-                )}
+                </div>
+                <div className="quiz-launch-actions">
+                  <button type="button" className="mini-action" disabled={quizLoading} onClick={() => void startQuiz("current")}>
+                    <CalendarDays />
+                    {quizLoading && quizLoadingMode === "current" ? "准备中..." : "测试这节课"}
+                  </button>
+                  <button type="button" className="mini-action" disabled={quizLoading} onClick={() => void startQuiz("all")}>
+                    <Brain />
+                    {quizLoading && quizLoadingMode === "all" ? "准备中..." : "测试全部"}
+                  </button>
+                </div>
               </section>
+
+              {activityMode === "quiz" ? (
+                <section className={`quiz-panel ${quizResult === "correct" ? "celebrate" : ""}`}>
+                  <div className="quiz-head">
+                    <div>
+                      <p>正在测试</p>
+                      <strong>{quizLabel}</strong>
+                    </div>
+                    <button type="button" className="mini-action" onClick={exitQuiz}>
+                      <ArrowLeft />
+                      回到学习
+                    </button>
+                  </div>
+
+                  {quizFinished ? (
+                    <div className="quiz-summary">
+                      <div className="quiz-face">😊</div>
+                      <h2>测试完成</h2>
+                      <p>这次答对了 {quizCorrectCount} / {quizTotal} 题。继续听一听、说一说，会越来越稳。</p>
+                      <div className="quiz-summary-actions">
+                        <button type="button" className="finish-button" onClick={() => void startQuiz(quizMode)}>
+                          <RotateCcw />
+                          再测一次
+                        </button>
+                      </div>
+                    </div>
+                  ) : currentQuizQuestion ? (
+                    <>
+                      <div className="quiz-progress-row">
+                        <span>{quizProgressText}</span>
+                        <div className="progress-track" aria-hidden>
+                          <div style={{ width: `${((quizIndex + 1) / quizTotal) * 100}%` }} />
+                        </div>
+                        <span>答对 {quizCorrectCount} 题</span>
+                      </div>
+
+                      <div className="quiz-prompt">
+                        <button type="button" className="round-action" onClick={() => void playTeacherAudio(currentQuizQuestion.prompt)}>
+                          <Volume2 />
+                          听题目
+                        </button>
+                        <p>听一听老师读的是哪个英文单词，再点下面正确的一张卡。</p>
+                      </div>
+
+                      <div className="quiz-options">
+                        {currentQuizQuestion.options.map((option) => {
+                          const isChosen = quizChoiceId === option.id;
+                          const isCorrect = option.id === currentQuizQuestion.prompt.id;
+                          return (
+                            <button
+                              key={option.id}
+                              type="button"
+                              className={[
+                                "quiz-option",
+                                isChosen ? "selected" : "",
+                                quizAnswered && isCorrect ? "correct" : "",
+                                quizAnswered && isChosen && !isCorrect ? "wrong" : ""
+                              ]
+                                .filter(Boolean)
+                                .join(" ")}
+                              disabled={quizAnswered}
+                              onClick={() => answerQuiz(option)}
+                            >
+                              <LessonImage
+                                key={`quiz-${option.lessonId}-${option.id}`}
+                                imageUrl={option.imageUrl}
+                                alt={option.text}
+                                cacheKey={`quiz-${option.lessonId}-${option.id}`}
+                              />
+                              <strong>{option.text}</strong>
+                            </button>
+                          );
+                        })}
+                      </div>
+
+                      {quizAnswered ? (
+                        <div className={`quiz-feedback ${quizResult === "correct" ? "correct" : "wrong"}`}>
+                          {quizResult === "correct" ? (
+                            <>
+                              <div className="quiz-face">😊</div>
+                              <strong>答对啦</strong>
+                              <p>太棒了，继续保持，我们马上下一题。</p>
+                              <div className="quiz-confetti" aria-hidden>
+                                <span />
+                                <span />
+                                <span />
+                                <span />
+                                <span />
+                                <span />
+                              </div>
+                            </>
+                          ) : (
+                            <>
+                              <div className="quiz-face">😢</div>
+                              <strong>这题先记一下</strong>
+                              <p>没关系，再听一听就会了。你已经很认真，我们继续加油。</p>
+                            </>
+                          )}
+                        </div>
+                      ) : null}
+                    </>
+                  ) : null}
+                </section>
+              ) : null}
+
+              {activityMode === "study" ? (
+                <section className="finish-panel">
+                  {identity.mode === "guest" ? (
+                    <p>游客模式可以点读体验。输入本班姓名或学号后，就能正式打卡。</p>
+                  ) : finishedCurrentLesson ? (
+                    <div className="reward">
+                      <img src="/jsyx-smile.png" alt="" />
+                      <span className="reward-badge">完成第 {formatCheckinDay(stats?.totalCheckins ?? shareDay)} 天打卡</span>
+                      <h2>恭喜 {studentName}</h2>
+                      <p>{shareText}</p>
+                      <strong>{rewardMessage}</strong>
+                      <button type="button" className="share-copy-button" onClick={() => void copyShareText()}>
+                        <Copy />
+                        复制打卡文案
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="finish-cta">
+                      <button className="finish-button" onClick={() => void completeCheckin()} disabled={!isLastPage || loading}>
+                        <Sparkles />
+                        {isLastPage
+                          ? loading
+                            ? "打卡中..."
+                            : isTodayLesson
+                              ? "完成今日打卡"
+                              : "完成复习打卡"
+                          : "翻到最后一页即可打卡"}
+                      </button>
+                      <p>只要完成最后一页，就可以打卡。</p>
+                    </div>
+                  )}
+                </section>
+              ) : null}
 
               {identity.mode === "student" && stats ? (
                 <>
