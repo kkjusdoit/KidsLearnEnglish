@@ -10,7 +10,8 @@
     "test": "node --test --import tsx src/**/*.test.ts",
     "media:analyze": "tsx scripts/analyze-media.ts",
     "media:process": "tsx scripts/process-media.ts",
-    "media:import": "tsx scripts/import-lesson-media.ts"
+    "media:import": "tsx scripts/import-lesson-media.ts",
+    "audio:copy-library": "tsx scripts/copy-pronunciations-from-library.ts"
   },
   "dependencies": {
     "@fastify/cors": "^10.0.2",

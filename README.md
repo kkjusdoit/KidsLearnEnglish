@@ -87,6 +87,36 @@ bash /Users/linkunkun/Documents/Codex/2026-07-01/zhe/.codex/skills/lesson-video-
 
 脚本会输出建议的 `LessonPage` JSON 片段，发布前需要人工校对每页文本和音频。
 
+## 本地发音库
+
+现在默认优先使用你本机的朗文美式发音库：
+
+- 压缩包来源：`/Users/linkunkun/Desktop/朗文词典语音库(美式).rar`
+- 已解压到：`/Users/linkunkun/Documents/Codex/2026-07-01/zhe/work/audio-libraries/longman-us`
+
+如果已经有 `words.txt`，可以直接从这个本地库批量拷贝发音：
+
+```bash
+npm run audio:copy-library -w @kindergarten-english/api -- /abs/path/to/words.txt /abs/path/to/output/audio
+```
+
+例如：
+
+```bash
+npm run audio:copy-library -w @kindergarten-english/api -- \
+  /Users/linkunkun/Documents/Codex/2026-07-01/zhe/work/lesson-prep/2026-07-06-q-words/words.txt \
+  /Users/linkunkun/Documents/Codex/2026-07-01/zhe/work/lesson-prep/2026-07-06-q-words/audio
+```
+
+规则：
+
+- 输入是 `words.txt`，每行一个单词
+- 脚本会按首字母目录去朗文库里找同名 `mp3`
+- 找到后会统一转存为项目可直接使用的 `mp3`
+- 没找到的词会在输出 JSON 里列到 `missing`
+
+以后如果老师视频里识别出单词，我会优先从这套朗文库里拿发音，不再默认走 Wiktionary / Wikimedia Commons。
+
 ## 人工素材导入
 
 现在的推荐流程是人工准备好每天的音频和图片，再直接导入网站。
