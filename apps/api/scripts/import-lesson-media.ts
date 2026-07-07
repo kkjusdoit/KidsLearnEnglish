@@ -434,4 +434,4 @@ function inferDateFromDirectory(dir: string) {
 }
 
 const AUDIO_EXTENSIONS = [".mp3", ".m4a", ".wav", ".aac", ".webm", ".ogg"] as const;
-const IMAGE_EXTENSIONS = [".jpg", ".jpeg", ".png", ".webp"] as const;
+const IMAGE_EXTENSIONS = [".webp", ".png", ".jpg", ".jpeg"] as const;
