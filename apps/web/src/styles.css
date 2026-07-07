@@ -678,6 +678,29 @@ button:disabled {
   gap: 10px;
 }
 
+.quiz-config-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  font-size: 14px;
+  color: var(--text-secondary);
+}
+
+.quiz-limit-select {
+  border: none;
+  background: transparent;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--primary);
+  cursor: pointer;
+  outline: none;
+  padding-right: 4px;
+}
+
 .quiz-panel {
   position: relative;
   overflow: hidden;

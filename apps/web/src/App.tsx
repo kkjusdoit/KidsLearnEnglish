@@ -30,6 +30,11 @@ import { AdminPanel } from "./admin";
 
 const siteTitle = "京师幼学实验小一班英语打卡网站";
 const challengeStartDate = "2026-06-29";
+const quizFeedbackPlaybackRate = 1.5;
+const quizFeedbackSoundMap = {
+  correct: "/sounds/quiz-correct.mp3",
+  wrong: "/sounds/quiz-wrong.mp3"
+} as const;
 
 type QuizPage = {
   id: string;
@@ -255,6 +260,10 @@ function buildQuizQuestions(pages: QuizPage[], desiredCount: number) {
   });
 }
 
+function delay(ms: number) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
 function App() {
   const [identifier, setIdentifier] = useState("");
   const [identity, setIdentity] = useState<IdentityResponse | null>(null);
@@ -276,6 +285,7 @@ function App() {
   const [quizLoading, setQuizLoading] = useState(false);
   const [quizLoadingMode, setQuizLoadingMode] = useState<"current" | "all" | null>(null);
   const [quizMode, setQuizMode] = useState<"current" | "all">("current");
+  const [quizLimit, setQuizLimit] = useState<string>("default");
   const [quizLabel, setQuizLabel] = useState("");
   const [quizQuestions, setQuizQuestions] = useState<QuizQuestion[]>([]);
   const [quizIndex, setQuizIndex] = useState(0);
@@ -287,11 +297,37 @@ function App() {
   const showAdmin = new URLSearchParams(window.location.search).get("admin") === "1";
   const [mode, setMode] = useState<"student" | "admin">(showAdmin ? "admin" : "student");
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const preloadedAudioRef = useRef<Map<string, HTMLAudioElement>>(new Map());
+  const feedbackAudioContextRef = useRef<AudioContext | null>(null);
+  const feedbackAudioRef = useRef<Record<"correct" | "wrong", HTMLAudioElement | null>>({
+    correct: null,
+    wrong: null
+  });
+  const quizRunIdRef = useRef(0);
+  const quizAdvanceTimeoutRef = useRef<number | null>(null);
 
   useEffect(() => {
     document.title = siteTitle;
     void loadTodayLesson();
     void refreshLessonList();
+  }, []);
+
+  useEffect(() => {
+    for (const result of ["correct", "wrong"] as const) {
+      const audio = new Audio(quizFeedbackSoundMap[result]);
+      audio.preload = "auto";
+      audio.playbackRate = quizFeedbackPlaybackRate;
+      audio.load();
+      feedbackAudioRef.current[result] = audio;
+    }
+
+    return () => {
+      feedbackAudioRef.current.correct?.pause();
+      feedbackAudioRef.current.wrong?.pause();
+      feedbackAudioRef.current.correct = null;
+      feedbackAudioRef.current.wrong = null;
+      clearPendingQuizAdvance();
+    };
   }, []);
 
   async function refreshLessonList() {
@@ -376,6 +412,20 @@ function App() {
     preloadLessonImages(lesson, pageIndex);
   }, [lesson, pageIndex]);
 
+  function ensureAudioPreloaded(audioUrl: string) {
+    const resolved = mediaUrl(audioUrl);
+    const absolute = new URL(resolved, window.location.href).href;
+    if (preloadedAudioRef.current.has(absolute)) {
+      return;
+    }
+
+    const audio = new Audio();
+    audio.preload = "auto";
+    audio.src = resolved;
+    audio.load();
+    preloadedAudioRef.current.set(absolute, audio);
+  }
+
   async function handleIdentify(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (lesson?.pages[0]) {
@@ -401,10 +451,10 @@ function App() {
 
   async function playTeacherAudio(
     page = currentPage,
-    options: { showBlockedMessage?: boolean } = {}
+    options: { showBlockedMessage?: boolean; retryCount?: number; allowLessonAutoAdvance?: boolean } = {}
   ) {
     if (!page) return false;
-    const { showBlockedMessage = true } = options;
+    const { showBlockedMessage = true, retryCount = 1, allowLessonAutoAdvance = true } = options;
     let audio = audioRef.current;
     if (!audio) {
       audio = new Audio();
@@ -412,17 +462,18 @@ function App() {
       audioRef.current = audio;
     }
 
+    stopFeedbackSound();
     audio.pause();
     setMessage(null);
     audio.onplay = () => setIsPlaying(true);
     audio.onpause = () => setIsPlaying(false);
     audio.onended = () => {
       setIsPlaying(false);
-      if (autoMode && lesson && page.order < lesson.pages.length) {
+      if (allowLessonAutoAdvance && autoMode && lesson && page.order < lesson.pages.length) {
         const nextPage = lesson.pages[page.order];
         window.setTimeout(() => {
           setPageIndex(page.order);
-          void playTeacherAudio(nextPage, { showBlockedMessage: false });
+          void playTeacherAudio(nextPage, { showBlockedMessage: false, allowLessonAutoAdvance: true });
         }, 650);
       }
     };
@@ -431,6 +482,7 @@ function App() {
     const nextSrcAbsolute = new URL(nextSrc, window.location.href).href;
     if (audio.src !== nextSrcAbsolute) {
       audio.src = nextSrc;
+      audio.load();
     }
     try {
       audio.currentTime = 0;
@@ -442,11 +494,161 @@ function App() {
       await audio.play();
       return true;
     } catch {
+      if (retryCount > 0) {
+        await delay(180);
+        return playTeacherAudio(page, {
+          showBlockedMessage,
+          retryCount: retryCount - 1,
+          allowLessonAutoAdvance
+        });
+      }
       setIsPlaying(false);
       if (showBlockedMessage) {
         setMessage("请点一次“听老师读”开始播放，之后翻页会自动播放。");
       }
       return false;
+    }
+  }
+
+  function stopFeedbackSound() {
+    for (const result of ["correct", "wrong"] as const) {
+      const audio = feedbackAudioRef.current[result];
+      if (!audio) continue;
+      audio.pause();
+      try {
+        audio.currentTime = 0;
+      } catch {
+        // Ignore reset failures on browsers that have not finished attaching metadata yet.
+      }
+    }
+  }
+
+  function clearPendingQuizAdvance() {
+    if (quizAdvanceTimeoutRef.current === null) {
+      return;
+    }
+
+    window.clearTimeout(quizAdvanceTimeoutRef.current);
+    quizAdvanceTimeoutRef.current = null;
+  }
+
+  function resetQuizFlow() {
+    quizRunIdRef.current += 1;
+    clearPendingQuizAdvance();
+    stopFeedbackSound();
+  }
+
+  function getFeedbackAudioContext() {
+    if (typeof window === "undefined" || typeof window.AudioContext === "undefined") {
+      return null;
+    }
+
+    if (!feedbackAudioContextRef.current) {
+      feedbackAudioContextRef.current = new window.AudioContext();
+    }
+
+    return feedbackAudioContextRef.current;
+  }
+
+  function playFeedbackTone(result: "correct" | "wrong") {
+    const audioContext = getFeedbackAudioContext();
+    if (!audioContext) {
+      return;
+    }
+
+    if (audioContext.state === "suspended") {
+      void audioContext.resume().catch(() => undefined);
+    }
+
+    const now = audioContext.currentTime + 0.01;
+    const masterGain = audioContext.createGain();
+    masterGain.connect(audioContext.destination);
+    masterGain.gain.setValueAtTime(0.0001, now);
+    masterGain.gain.exponentialRampToValueAtTime(result === "correct" ? 0.22 : 0.16, now + 0.04);
+    masterGain.gain.exponentialRampToValueAtTime(0.0001, now + (result === "correct" ? 0.9 : 0.62));
+
+    const notes =
+      result === "correct"
+        ? [
+            { frequency: 523.25, start: 0, duration: 0.18, type: "triangle" as OscillatorType },
+            { frequency: 659.25, start: 0.16, duration: 0.18, type: "triangle" as OscillatorType },
+            { frequency: 783.99, start: 0.32, duration: 0.26, type: "triangle" as OscillatorType },
+            { frequency: 1046.5, start: 0.54, duration: 0.22, type: "sine" as OscillatorType }
+          ]
+        : [
+            { frequency: 392, start: 0, duration: 0.2, type: "sine" as OscillatorType },
+            { frequency: 349.23, start: 0.18, duration: 0.2, type: "sine" as OscillatorType },
+            { frequency: 293.66, start: 0.36, duration: 0.18, type: "triangle" as OscillatorType }
+          ];
+
+    for (const note of notes) {
+      const oscillator = audioContext.createOscillator();
+      const noteGain = audioContext.createGain();
+      oscillator.type = note.type;
+      oscillator.frequency.setValueAtTime(note.frequency, now + note.start);
+      noteGain.gain.setValueAtTime(0.0001, now + note.start);
+      noteGain.gain.exponentialRampToValueAtTime(1, now + note.start + 0.03);
+      noteGain.gain.exponentialRampToValueAtTime(0.0001, now + note.start + note.duration);
+      oscillator.connect(noteGain);
+      noteGain.connect(masterGain);
+      oscillator.start(now + note.start);
+      oscillator.stop(now + note.start + note.duration);
+    }
+  }
+
+  async function waitForFeedbackAudio(audio: HTMLAudioElement) {
+    return await new Promise<number>((resolve) => {
+      const fallbackMs =
+        Number.isFinite(audio.duration) && audio.duration > 0
+          ? Math.min((audio.duration * 1000) / quizFeedbackPlaybackRate + 250, 3200)
+          : 2200;
+
+      const cleanup = () => {
+        audio.removeEventListener("ended", handleEnded);
+        audio.removeEventListener("error", handleError);
+        window.clearTimeout(fallbackTimer);
+      };
+
+      const handleEnded = () => {
+        cleanup();
+        resolve(120);
+      };
+
+      const handleError = () => {
+        cleanup();
+        resolve(0);
+      };
+
+      const fallbackTimer = window.setTimeout(() => {
+        cleanup();
+        resolve(120);
+      }, fallbackMs);
+
+      audio.addEventListener("ended", handleEnded, { once: true });
+      audio.addEventListener("error", handleError, { once: true });
+    });
+  }
+
+  async function playFeedbackSound(result: "correct" | "wrong") {
+    let audio = feedbackAudioRef.current[result];
+    if (!audio) {
+      audio = new Audio(quizFeedbackSoundMap[result]);
+      audio.preload = "auto";
+      audio.playbackRate = quizFeedbackPlaybackRate;
+      audio.load();
+      feedbackAudioRef.current[result] = audio;
+    }
+
+    try {
+      stopFeedbackSound();
+      audio.playbackRate = quizFeedbackPlaybackRate;
+      audio.pause();
+      audio.currentTime = 0;
+      await audio.play();
+      return await waitForFeedbackAudio(audio);
+    } catch {
+      playFeedbackTone(result);
+      return result === "correct" ? 900 : 700;
     }
   }
 
@@ -459,6 +661,7 @@ function App() {
   }
 
   function resetQuizState() {
+    resetQuizFlow();
     setQuizQuestions([]);
     setQuizIndex(0);
     setQuizCorrectCount(0);
@@ -486,6 +689,7 @@ function App() {
 
   async function startQuiz(mode: "current" | "all") {
     if (!lesson) return;
+    resetQuizFlow();
     setQuizLoading(true);
     setQuizLoadingMode(mode);
     setMessage(null);
@@ -495,7 +699,16 @@ function App() {
         mode === "current"
           ? lessonToQuizPages(lesson)
           : await loadAllQuizPages();
-      const desiredCount = mode === "current" ? quizPages.length : Math.min(8, quizPages.length);
+      
+      let desiredCount = quizPages.length;
+      if (quizLimit === "default") {
+        desiredCount = mode === "current" ? quizPages.length : Math.min(8, quizPages.length);
+      } else if (quizLimit === "all") {
+        desiredCount = quizPages.length;
+      } else {
+        desiredCount = Math.min(Number(quizLimit), quizPages.length);
+      }
+
       const questions = buildQuizQuestions(quizPages, desiredCount);
       if (questions.length === 0) {
         setMessage("题目还不够，至少要有两张不同的单词卡才能开始测试。");
@@ -505,13 +718,19 @@ function App() {
       setQuizMode(mode);
       setQuizLabel(mode === "current" ? `${formatLessonDate(lesson.date)} 小测试` : "全部单词小测试");
       setQuizQuestions(questions);
+      for (const question of questions) {
+        ensureAudioPreloaded(question.prompt.audioUrl);
+      }
       setQuizIndex(0);
       setQuizCorrectCount(0);
       setQuizChoiceId(null);
       setQuizAnswered(false);
       setQuizResult(null);
       setActivityMode("quiz");
-      void playTeacherAudio(questions[0].prompt, { showBlockedMessage: false });
+      void playTeacherAudio(questions[0].prompt, {
+        showBlockedMessage: false,
+        allowLessonAutoAdvance: false
+      });
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "加载测试题失败");
     } finally {
@@ -530,11 +749,20 @@ function App() {
     }
 
     const nextQuestion = quizQuestions[nextIndex];
+    ensureAudioPreloaded(nextQuestion.prompt.audioUrl);
+    const followingQuestion = quizQuestions[nextIndex + 1];
+    if (followingQuestion) {
+      ensureAudioPreloaded(followingQuestion.prompt.audioUrl);
+    }
     setQuizIndex(nextIndex);
     setQuizAnswered(false);
     setQuizChoiceId(null);
     setQuizResult(null);
-    void playTeacherAudio(nextQuestion.prompt, { showBlockedMessage: false });
+    void playTeacherAudio(nextQuestion.prompt, {
+      showBlockedMessage: false,
+      retryCount: 1,
+      allowLessonAutoAdvance: false
+    });
   }
 
   function answerQuiz(option: QuizPage) {
@@ -542,7 +770,12 @@ function App() {
       return;
     }
 
+    const quizRunId = quizRunIdRef.current;
     const correct = option.id === currentQuizQuestion.prompt.id;
+    const nextQuizIndex = quizIndex + 1;
+    clearPendingQuizAdvance();
+    audioRef.current?.pause();
+    setIsPlaying(false);
     setQuizChoiceId(option.id);
     setQuizAnswered(true);
     setQuizResult(correct ? "correct" : "wrong");
@@ -550,9 +783,21 @@ function App() {
       setQuizCorrectCount((value) => value + 1);
     }
 
-    window.setTimeout(() => {
-      advanceQuiz(quizIndex + 1);
-    }, 1350);
+    void (async () => {
+      const delayMs = await playFeedbackSound(correct ? "correct" : "wrong");
+      if (quizRunId !== quizRunIdRef.current) {
+        return;
+      }
+
+      quizAdvanceTimeoutRef.current = window.setTimeout(() => {
+        quizAdvanceTimeoutRef.current = null;
+        if (quizRunId !== quizRunIdRef.current) {
+          return;
+        }
+
+        advanceQuiz(nextQuizIndex);
+      }, delayMs);
+    })();
   }
 
   async function completeCheckin() {
@@ -606,11 +851,19 @@ function App() {
     if (audioRef.current) {
       audioRef.current.pause();
     }
+    stopFeedbackSound();
     setIsPlaying(false);
     setCheckinReward(null);
     setMessage(null);
     goToPage(0);
   }
+
+  useEffect(() => {
+    return () => {
+      stopFeedbackSound();
+      feedbackAudioContextRef.current?.close().catch(() => undefined);
+    };
+  }, []);
 
   if (showAdmin && mode === "admin") {
     return (
@@ -825,6 +1078,22 @@ function App() {
                     <strong>听英文声音，选出正确单词</strong>
                   </div>
                 </div>
+                <div className="quiz-config-row">
+                  <span>题目数量：</span>
+                  <select
+                    value={quizLimit}
+                    onChange={(event) => setQuizLimit(event.target.value)}
+                    className="quiz-limit-select"
+                  >
+                    <option value="default">默认数量</option>
+                    <option value="4">4 题</option>
+                    <option value="8">8 题</option>
+                    <option value="12">12 题</option>
+                    <option value="16">16 题</option>
+                    <option value="20">20 题</option>
+                    <option value="all">所有题目</option>
+                  </select>
+                </div>
                 <div className="quiz-launch-actions">
                   <button type="button" className="mini-action" disabled={quizLoading} onClick={() => void startQuiz("current")}>
                     <CalendarDays />
@@ -873,7 +1142,17 @@ function App() {
                       </div>
 
                       <div className="quiz-prompt">
-                        <button type="button" className="round-action" onClick={() => void playTeacherAudio(currentQuizQuestion.prompt)}>
+                        <button
+                          type="button"
+                          className="round-action"
+                          onClick={() =>
+                            void playTeacherAudio(currentQuizQuestion.prompt, {
+                              showBlockedMessage: false,
+                              retryCount: 1,
+                              allowLessonAutoAdvance: false
+                            })
+                          }
+                        >
                           <Volume2 />
                           听题目
                         </button>
