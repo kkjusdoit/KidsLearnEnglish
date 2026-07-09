@@ -46,6 +46,20 @@ curl -I https://kindergarten-english-mvp.pages.dev/media/uploads/2026-07-01/page
 
 现在推荐直接走人工素材目录导入，不再依赖自动裁图作为主流程。
 
+**音频硬规则：日常单词发音优先使用你提供的朗文美式发音库。不要默认去 Wiktionary / Wikimedia Commons 找发音。**
+
+朗文库位置：
+
+```text
+/Users/linkunkun/Documents/Codex/2026-07-01/zhe/work/audio-libraries/longman-us
+```
+
+已有 `words.txt` 时，先用这个命令生成当天 `audio/`：
+
+```bash
+npm run audio:copy-library -w @kindergarten-english/api -- /abs/path/to/words.txt /abs/path/to/audio
+```
+
 推荐目录约定：
 
 ```text
@@ -88,6 +102,9 @@ bash /Users/linkunkun/Documents/Codex/2026-07-01/zhe/.codex/skills/lesson-video-
   - 用途：分析老师视频里的语音分段
 - 导入脚本：`/Users/linkunkun/Documents/Codex/2026-07-01/zhe/apps/api/scripts/import-lesson-media.ts`
   - 用途：把你已经确认好的 `page-1.jpg / page-1.mp3 / words.txt` 导入到网站数据
+- 朗文发音库导出脚本：`/Users/linkunkun/Documents/Codex/2026-07-01/zhe/apps/api/scripts/copy-pronunciations-from-library.ts`
+  - 用途：按 `words.txt` 从本地朗文美式发音库复制当天单词音频
+  - 默认库：`/Users/linkunkun/Documents/Codex/2026-07-01/zhe/work/audio-libraries/longman-us`
 - 音视频工具函数：`/Users/linkunkun/Documents/Codex/2026-07-01/zhe/apps/api/scripts/media-utils.ts`
   - 用途：`process-media.ts` / `analyze-media.ts` 底层会调用这里的 FFmpeg 逻辑
 - 后端部署脚本：`/Users/linkunkun/Documents/Codex/2026-07-01/zhe/infra/deploy-gce.sh`
@@ -123,6 +140,14 @@ words.txt
 ```
 
 `words.txt` 里每行一个单词，顺序和编号一一对应。图片如果暂时没有，也可以先只放 `audio/*.mp3 + words.txt`。
+
+准备好 `words.txt` 后，音频先从朗文库拿：
+
+```bash
+npm run audio:copy-library -w @kindergarten-english/api -- /abs/path/to/lesson-dir/words.txt /abs/path/to/lesson-dir/audio
+```
+
+如果有缺词，脚本会在输出 JSON 的 `missing` 里列出来；只有朗文库确实缺词时，才考虑其他来源。
 
 ### 3. 从视频提取音频和图片
 

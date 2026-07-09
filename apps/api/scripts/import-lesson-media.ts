@@ -5,6 +5,9 @@ import { config } from "../src/config.js";
 import { query, closeDb } from "../src/db.js";
 import { migrate } from "../src/schema.js";
 
+const AUDIO_EXTENSIONS = [".mp3", ".m4a", ".wav", ".aac", ".webm", ".ogg"] as const;
+const IMAGE_EXTENSIONS = [".webp", ".png", ".jpg", ".jpeg"] as const;
+
 type ManifestPage = {
   order?: number;
   type?: "word" | "sentence";
@@ -433,5 +436,4 @@ function inferDateFromDirectory(dir: string) {
   return normalizeLessonDate(path.basename(dir));
 }
 
-const AUDIO_EXTENSIONS = [".mp3", ".m4a", ".wav", ".aac", ".webm", ".ogg"] as const;
-const IMAGE_EXTENSIONS = [".webp", ".png", ".jpg", ".jpeg"] as const;
+
