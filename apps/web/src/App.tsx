@@ -406,7 +406,12 @@ function App() {
   const shareDayText = formatCheckinDay(shareDay);
   const studentName = identity?.mode === "student" ? identity.student.displayName : "小朋友";
   const shareText = `我是京师幼学蓝湾幼儿园小朋友 ${studentName}，👊👊挑战英文助力打卡第${shareDayText}天。说出口，刷到爆，连续打卡最闪耀！ Love English, From JSYX！🌟`;
-  const finishedCurrentLesson = Boolean(lesson && checkedDateSet.has(lesson.date));
+  const finishedCurrentLesson = Boolean(
+    lesson &&
+      (lesson.date > todayKey
+        ? checkedDateSet.has(todayKey)
+        : checkedDateSet.has(lesson.date))
+  );
   const rewardMessage = checkinReward ?? stats?.latestRewardText ?? "今天的英语打卡完成啦！";
   const currentQuizQuestion = quizQuestions[quizIndex];
   const quizFinished = activityMode === "quiz" && quizQuestions.length > 0 && quizIndex >= quizQuestions.length;

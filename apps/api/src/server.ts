@@ -675,6 +675,9 @@ export async function buildServer() {
       [auth.studentUuid, parsed.data.lessonId, parsed.data.pageCount, rewardText]
     );
 
+    const todayKey = dateKeyInShanghai();
+    const checkinDate = lesson.rows[0].lesson_date > todayKey ? todayKey : lesson.rows[0].lesson_date;
+
     await query(
       `
         insert into student_checkin_days (student_id, checkin_date, checked, source)
@@ -682,7 +685,7 @@ export async function buildServer() {
         on conflict (student_id, checkin_date)
         do update set checked = true, source = 'lesson'
       `,
-      [auth.studentUuid, lesson.rows[0].lesson_date]
+      [auth.studentUuid, checkinDate]
     );
 
     return {
