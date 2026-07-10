@@ -110,7 +110,8 @@ function preloadLessonImages(lesson: Lesson, startIndex = 0) {
 }
 
 function FitText({ text, type }: { text: string; type: "word" | "sentence" }) {
-  const length = text.length;
+  const displayText = formatStudyText(text);
+  const length = displayText.length;
   const size =
     type === "word"
       ? length > 10
@@ -122,9 +123,17 @@ function FitText({ text, type }: { text: string; type: "word" | "sentence" }) {
 
   return (
     <h1 className={`study-text ${type}`} style={{ fontSize: size }}>
-      {text}
+      {displayText}
     </h1>
   );
+}
+
+function formatStudyText(text: string) {
+  const trimmed = text.trim();
+  if (/^[A-Za-z]$/.test(trimmed)) {
+    return `${trimmed.toUpperCase()} ${trimmed.toLowerCase()}`;
+  }
+  return text;
 }
 
 function formatCheckinDay(day: number) {
